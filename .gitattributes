@@ -1,0 +1,11 @@
+# Store text with LF in the repo; check out with the OS default.
+* text=auto
+
+# Shell scripts must keep LF everywhere, batch files CRLF.
+gradlew text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
+
+*.jar binary
+*.webp binary
+*.png binary

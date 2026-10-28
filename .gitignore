@@ -1,0 +1,33 @@
+# Secrets and machine-specific config (Supabase URL/key, SDK path)
+local.properties
+.env
+.env.*
+*.jks
+*.keystore
+
+# Gradle and Kotlin build output
+.gradle/
+.kotlin/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+
+# IDE (Android Studio regenerates these on sync)
+.idea/
+*.iml
+
+# Supabase CLI local state
+supabase/.temp/
+supabase/.branches/
+
+# Claude Code local data (project settings.json may be shared)
+.claude/*
+!.claude/settings.json
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
