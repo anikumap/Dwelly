@@ -196,5 +196,5 @@ You own processes 3.0 and 4.0, `DiscoveryService`, `AgreementService`, and the `
 ## 7. Known gaps (be aware)
 
 - **Not run yet:** the pgTAP tests (no Docker on A's machine), the seed's login section, and the app on a real device. All three should work but haven't been run. If you hit an error in any of them, report it to Person A.
-- **No git repo yet.** Before you start, create one and share it. `local.properties` is already in `.gitignore`.
+- **Git:** clone the shared repo and work on your own branch (`person-b/...`, `person-c/...`). `local.properties` is ignored, so create your own copy (step 1.2).
 - **`ARCHITECTURE(1).md` should be renamed to `ARCHITECTURE.md`**, because `LOGIC.md` refers to it by that name.
