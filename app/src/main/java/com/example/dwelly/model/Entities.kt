@@ -153,7 +153,7 @@ data class ReportedPost(
 
 data class Completeness(val score: Int, val suggestions: List<String>)
 
-data class ListingOverview(val listing: Listing, val stats: ListingStats, val completeness: Completeness)
+data class ListingOverview(val listing: Listing, val stats: ListingStats, val completeness: Completeness, val photos: List<ListingPhoto> = emptyList())
 
 data class ListingDetail(val listing: Listing, val photos: List<ListingPhoto>)
 

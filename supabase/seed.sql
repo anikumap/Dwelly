@@ -40,20 +40,33 @@ where u.email like '%@seed.dwelly'
 on conflict do nothing;
 
 -- D2
-insert into public.listings (listing_id, landlord_id, title, address, lat, lng, rent, property_type, status, went_live_at) values
-    ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-00000000000a', '2BHK near Metro', 'Indiranagar, Bengaluru', 12.9784, 77.6408, 30000, 'APARTMENT', 'ACTIVE', now()),
-    ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-00000000000a', 'Studio in Koramangala', 'Koramangala, Bengaluru', 12.9352, 77.6245, 18000, 'STUDIO', 'RENTED', now());
+insert into public.listings (listing_id, landlord_id, title, description, address, lat, lng, rent, deposit, maintenance, property_type, bedrooms, bathrooms, furnishing, status, went_live_at) values
+    ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-00000000000a', '2BHK near Metro', 'Spacious 2BHK with balcony and park view', 'Indiranagar, Bengaluru', 12.9784, 77.6408, 30000, 60000, 2000, 'APARTMENT', 2, 2, 'SEMI_FURNISHED', 'ACTIVE', now()),
+    ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-00000000000a', 'Studio in Koramangala', 'Cozy studio suitable for single professionals', 'Koramangala, Bengaluru', 12.9352, 77.6245, 18000, 36000, 1500, 'STUDIO', 1, 1, 'FULLY_FURNISHED', 'RENTED', now()),
+    ('00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-00000000000a', '1BHK in Whitefield', 'Well-lit flat close to tech parks', 'Whitefield, Bengaluru', 12.9698, 77.7500, 16000, 32000, 1000, 'APARTMENT', 1, 1, 'SEMI_FURNISHED', 'ACTIVE', now()),
+    ('00000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-00000000000a', '3BHK Luxury Villa', 'Independent gated villa with private lawn', 'HSR Layout, Bengaluru', 12.9121, 77.6446, 65000, 150000, 5000, 'VILLA', 3, 3, 'FULLY_FURNISHED', 'ACTIVE', now());
 
 insert into public.listing_photos (listing_id, url, position) values
-    ('00000000-0000-0000-0000-000000000001', 'https://picsum.photos/seed/dwelly1/800/600', 0);
+    ('00000000-0000-0000-0000-000000000001', 'https://picsum.photos/seed/dwelly1/800/600', 0),
+    ('00000000-0000-0000-0000-000000000003', 'https://picsum.photos/seed/dwelly3/800/600', 0),
+    ('00000000-0000-0000-0000-000000000004', 'https://picsum.photos/seed/dwelly4/800/600', 0);
 
 -- Counters match the log rows below.
 insert into public.listing_stats (listing_id, views, saves, enquiries) values
     ('00000000-0000-0000-0000-000000000001', 1, 1, 1),
-    ('00000000-0000-0000-0000-000000000002', 0, 0, 0);
+    ('00000000-0000-0000-0000-000000000002', 0, 0, 0),
+    ('00000000-0000-0000-0000-000000000003', 1, 1, 0),
+    ('00000000-0000-0000-0000-000000000004', 1, 0, 0);
 
-insert into public.listing_views (user_id, listing_id) values ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-000000000001');
-insert into public.listing_saves (user_id, listing_id) values ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-000000000001');
+insert into public.listing_views (user_id, listing_id) values
+    ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-000000000001'),
+    ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-000000000003'),
+    ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-000000000004');
+
+insert into public.listing_saves (user_id, listing_id) values
+    ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-000000000001'),
+    ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-000000000003');
+
 insert into public.enquiries (listing_id, tenant_id, message) values
     ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-00000000000b', 'Is parking available?');
 
@@ -64,7 +77,9 @@ insert into public.agreements (listing_id, landlord_id, tenant_id, status, landl
 -- D4: one thread per listing (the general thread comes from 0001_schema.sql).
 insert into public.forum_threads (thread_id, listing_id) values
     ('00000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-000000000001'),
-    ('00000000-0000-0000-0000-0000000000f2', '00000000-0000-0000-0000-000000000002');
+    ('00000000-0000-0000-0000-0000000000f2', '00000000-0000-0000-0000-000000000002'),
+    ('00000000-0000-0000-0000-0000000000f3', '00000000-0000-0000-0000-000000000003'),
+    ('00000000-0000-0000-0000-0000000000f4', '00000000-0000-0000-0000-000000000004');
 
 insert into public.forum_posts (post_id, thread_id, author_id, body) values
     ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-00000000000b', 'How is the water supply here?');

@@ -29,6 +29,7 @@ import com.example.dwelly.ui.auth.LoginScreen
 import com.example.dwelly.ui.auth.RegisterScreen
 import com.example.dwelly.ui.forum.ThreadListScreen
 import com.example.dwelly.ui.forum.ThreadScreen
+import com.example.dwelly.ui.landlord.LandlordScreen
 import kotlinx.coroutines.launch
 
 private object Routes {
@@ -38,8 +39,10 @@ private object Routes {
     const val TENANT = "tenant"
     const val ADMIN = "admin"
     const val THREAD = "thread/{threadId}?title={title}"
+    const val CREATE_AGREEMENT = "agreement/create/{listingId}"
 
     fun thread(threadId: String, title: String) = "thread/$threadId?title=${Uri.encode(title)}"
+    fun createAgreement(listingId: String) = "agreement/create/$listingId"
 }
 
 /**
@@ -79,7 +82,21 @@ fun DwellyNavHost(dwelly: DwellyService, modifier: Modifier = Modifier) {
                 RegisterScreen(dwelly, onBack = { nav.popBackStack() })
             }
             composable(Routes.LANDLORD) {
-                LandlordDashboard(onLogout = logout)
+                LandlordScreen(
+                    dwelly = dwelly,
+                    onCreateAgreement = { listingId -> nav.navigate(Routes.createAgreement(listingId)) },
+                    onLogout = logout,
+                )
+            }
+            composable(
+                Routes.CREATE_AGREEMENT,
+                arguments = listOf(navArgument("listingId") { type = NavType.StringType }),
+            ) { entry ->
+                val listingId = entry.arguments?.getString("listingId").orEmpty()
+                Column {
+                    Text("Create agreement for listing $listingId (Person C)")
+                    Button(onClick = { nav.popBackStack() }) { Text("Back") }
+                }
             }
             composable(Routes.TENANT) {
                 TenantDashboard(
@@ -106,15 +123,6 @@ fun DwellyNavHost(dwelly: DwellyService, modifier: Modifier = Modifier) {
                 )
             }
         }
-    }
-}
-
-/** Person B builds the dashboard; this is the entry point it replaces. */
-@Composable
-private fun LandlordDashboard(onLogout: () -> Unit) {
-    Column {
-        Text("Landlord dashboard (Person B)")
-        Button(onClick = onLogout) { Text("Log out") }
     }
 }
 
