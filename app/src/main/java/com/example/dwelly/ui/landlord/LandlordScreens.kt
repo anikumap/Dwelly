@@ -1,19 +1,36 @@
 package com.example.dwelly.ui.landlord
 
+import android.graphics.BitmapFactory
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -25,16 +42,24 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil3.compose.AsyncImage
 import com.example.dwelly.model.Amenity
 import com.example.dwelly.model.Furnishing
 import com.example.dwelly.model.HouseRule
 import com.example.dwelly.model.Listing
 import com.example.dwelly.model.ListingOverview
+import com.example.dwelly.model.ListingPhoto
 import com.example.dwelly.model.ListingStatus
 import com.example.dwelly.model.PreferredTenant
 import com.example.dwelly.model.PropertyType
@@ -55,9 +80,9 @@ class LandlordViewModel(private val dwelly: DwellyService) : ViewModel() {
 
     fun load() {
         if (busy) return
-        busy = true
-        message = null
         viewModelScope.launch {
+            busy = true
+            message = null
             try {
                 dwelly.getMyListings()
                     .onSuccess { overviews = it }
@@ -66,6 +91,12 @@ class LandlordViewModel(private val dwelly: DwellyService) : ViewModel() {
                 busy = false
             }
         }
+    }
+
+    private suspend fun reloadListingsInternal() {
+        dwelly.getMyListings()
+            .onSuccess { overviews = it }
+            .onFailure { message = it.message }
     }
 
     fun clearMessage() {
@@ -87,24 +118,30 @@ class LandlordViewModel(private val dwelly: DwellyService) : ViewModel() {
         viewModelScope.launch {
             try {
                 dwelly.setListingStatus(listingId, status)
-                    .onSuccess { load() }
-                    .onFailure { message = it.message; busy = false }
+                    .onSuccess { reloadListingsInternal() }
+                    .onFailure { message = it.message }
             } catch (e: Exception) {
                 message = e.message
+            } finally {
                 busy = false
             }
         }
     }
 
-    fun createListing(listing: Listing, photos: List<ByteArray>, onDone: () -> Unit) {
+    fun createListing(
+        listing: Listing,
+        photos: List<ByteArray>,
+        photoUrls: List<String>,
+        onDone: () -> Unit,
+    ) {
         if (busy) return
         busy = true
         message = null
         viewModelScope.launch {
             try {
-                dwelly.createListing(listing, photos)
+                dwelly.createListing(listing, photos, photoUrls)
                     .onSuccess {
-                        load()
+                        reloadListingsInternal()
                         onDone()
                     }
                     .onFailure {
@@ -117,7 +154,13 @@ class LandlordViewModel(private val dwelly: DwellyService) : ViewModel() {
         }
     }
 
-    fun updateListing(listing: Listing, onDone: () -> Unit) {
+    fun updateListing(
+        listing: Listing,
+        newPhotos: List<ByteArray> = emptyList(),
+        newPhotoUrls: List<String> = emptyList(),
+        existingPhotoCount: Int = 0,
+        onDone: () -> Unit,
+    ) {
         if (busy) return
         busy = true
         message = null
@@ -125,7 +168,15 @@ class LandlordViewModel(private val dwelly: DwellyService) : ViewModel() {
             try {
                 dwelly.updateListing(listing)
                     .onSuccess {
-                        load()
+                        val listingId = requireNotNull(listing.listingId)
+                        var nextPos = existingPhotoCount
+                        newPhotos.forEach { bytes ->
+                            dwelly.uploadPhoto(listingId, bytes, nextPos++)
+                        }
+                        newPhotoUrls.forEach { url ->
+                            dwelly.addPhotoUrl(listingId, url, nextPos++)
+                        }
+                        reloadListingsInternal()
                         onDone()
                     }
                     .onFailure {
@@ -173,10 +224,11 @@ fun LandlordScreen(
         is LandlordViewMode.Create -> {
             ListingFormScreen(
                 initialListing = null,
+                existingPhotos = emptyList(),
                 errorMessage = vm.message,
                 busy = vm.busy,
-                onSave = { listing, photos ->
-                    vm.createListing(listing, photos) { mode = LandlordViewMode.Dashboard }
+                onSave = { listing, photos, urls ->
+                    vm.createListing(listing, photos, urls) { mode = LandlordViewMode.Dashboard }
                 },
                 onCancel = {
                     vm.clearMessage()
@@ -185,12 +237,21 @@ fun LandlordScreen(
             )
         }
         is LandlordViewMode.Edit -> {
+            val existingPhotos = vm.overviews
+                .find { it.listing.listingId == currentMode.listing.listingId }?.photos
+                ?: emptyList()
             ListingFormScreen(
                 initialListing = currentMode.listing,
+                existingPhotos = existingPhotos,
                 errorMessage = vm.message,
                 busy = vm.busy,
-                onSave = { listing, _ ->
-                    vm.updateListing(listing) { mode = LandlordViewMode.Dashboard }
+                onSave = { listing, photos, urls ->
+                    vm.updateListing(
+                        listing = listing,
+                        newPhotos = photos,
+                        newPhotoUrls = urls,
+                        existingPhotoCount = existingPhotos.size,
+                    ) { mode = LandlordViewMode.Dashboard }
                 },
                 onCancel = {
                     vm.clearMessage()
@@ -271,6 +332,28 @@ private fun ListingOverviewCard(
     val listing = overview.listing
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp)) {
+            // Photo strip — plain Row + horizontalScroll avoids LazyRow-in-LazyColumn conflicts
+            if (overview.photos.isNotEmpty()) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(bottom = 8.dp),
+                ) {
+                    overview.photos.forEach { photo ->
+                        AsyncImage(
+                            model = photo.url,
+                            contentDescription = "Property photo",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(100.dp)
+                                .clip(RoundedCornerShape(8.dp)),
+                        )
+                    }
+                }
+            }
+
             Text("${listing.title} — ${listing.status}")
             Text("${listing.address} • Rent: ₹${listing.rent.toInt()}/mo • Type: ${listing.propertyType}")
 
@@ -328,11 +411,13 @@ private fun ListingOverviewCard(
 @Composable
 private fun ListingFormScreen(
     initialListing: Listing?,
+    existingPhotos: List<com.example.dwelly.model.ListingPhoto>,
     errorMessage: String?,
     busy: Boolean,
-    onSave: (Listing, List<ByteArray>) -> Unit,
+    onSave: (Listing, List<ByteArray>, List<String>) -> Unit,
     onCancel: () -> Unit,
 ) {
+    val context = LocalContext.current
     val isEdit = initialListing != null
 
     var title by rememberSaveable { mutableStateOf(initialListing?.title.orEmpty()) }
@@ -358,7 +443,32 @@ private fun ListingFormScreen(
 
     var selectedAmenities by remember { mutableStateOf(initialListing?.amenities?.toSet() ?: emptySet()) }
     var selectedRules by remember { mutableStateOf(initialListing?.rules?.toSet() ?: emptySet()) }
-    var photosCount by rememberSaveable { mutableStateOf(0) }
+
+    // Real photos: selected byte arrays from device storage and pasted URLs
+    var selectedDevicePhotos by remember { mutableStateOf<List<ByteArray>>(emptyList()) }
+    var photoUrls by remember { mutableStateOf<List<String>>(emptyList()) }
+    var photoUrlInput by rememberSaveable { mutableStateOf("") }
+
+    val MAX_PHOTOS = 10
+    val totalPhotos = existingPhotos.size + selectedDevicePhotos.size + photoUrls.size
+    val atLimit = totalPhotos >= MAX_PHOTOS
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris: List<Uri> ->
+        val remaining = MAX_PHOTOS - totalPhotos
+        val toAdd = uris.take(remaining.coerceAtLeast(0))
+        val newBytes = toAdd.mapNotNull { uri ->
+            try {
+                context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            } catch (_: Exception) {
+                null
+            }
+        }
+        if (newBytes.isNotEmpty()) {
+            selectedDevicePhotos = selectedDevicePhotos + newBytes
+        }
+    }
 
     LazyColumn(modifier = Modifier.padding(16.dp)) {
         item {
@@ -560,10 +670,165 @@ private fun ListingFormScreen(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-            if (!isEdit) {
-                Text("Photos: $photosCount added")
-                Button(onClick = { photosCount++ }) {
-                    Text("Add dummy photo")
+            Text("Photos (${totalPhotos}/${MAX_PHOTOS})", style = MaterialTheme.typography.titleSmall)
+
+            if (atLimit) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Maximum 10 photos reached. Remove one to add more.",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
+            // --- Existing photos (edit mode) ---
+            if (existingPhotos.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text("Saved photos:", style = MaterialTheme.typography.labelMedium)
+                Spacer(modifier = Modifier.height(4.dp))
+                // Row + horizontalScroll avoids LazyRow-in-LazyColumn subcomposition conflicts
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                ) {
+                    existingPhotos.forEach { photo ->
+                        AsyncImage(
+                            model = photo.url,
+                            contentDescription = "Saved photo",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(90.dp)
+                                .clip(RoundedCornerShape(8.dp)),
+                        )
+                    }
+                }
+            }
+
+            // --- New device photos ---
+            if (selectedDevicePhotos.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text("From device:", style = MaterialTheme.typography.labelMedium)
+                Spacer(modifier = Modifier.height(4.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(selectedDevicePhotos.size) { idx ->
+                        val bytes = selectedDevicePhotos[idx]
+                        val bitmap = remember(bytes) {
+                            try {
+                                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                            } catch (_: Exception) {
+                                null
+                            }
+                        }
+                        Box(modifier = Modifier.size(90.dp)) {
+                            if (bitmap != null) {
+                                Image(
+                                    bitmap = bitmap,
+                                    contentDescription = "Device photo ${idx + 1}",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(RoundedCornerShape(8.dp)),
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text("Photo", style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                            TextButton(
+                                onClick = {
+                                    selectedDevicePhotos = selectedDevicePhotos.toMutableList().also { it.removeAt(idx) }
+                                },
+                                modifier = Modifier.align(Alignment.TopEnd),
+                            ) { Text("✕", style = MaterialTheme.typography.labelSmall) }
+                        }
+                    }
+                }
+            }
+
+            // --- URL photos ---
+            if (photoUrls.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text("From links:", style = MaterialTheme.typography.labelMedium)
+                Spacer(modifier = Modifier.height(4.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(photoUrls.size) { idx ->
+                        Box(modifier = Modifier.size(90.dp)) {
+                            SubcomposeAsyncImage(
+                                model = photoUrls[idx],
+                                contentDescription = "URL photo ${idx + 1}",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(8.dp)),
+                                loading = {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                                    }
+                                },
+                                error = {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(8.dp)),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text("Link Error", style = MaterialTheme.typography.labelSmall)
+                                    }
+                                },
+                            )
+                            TextButton(
+                                onClick = { photoUrls = photoUrls.toMutableList().also { it.removeAt(idx) } },
+                                modifier = Modifier.align(Alignment.TopEnd),
+                            ) { Text("✕", style = MaterialTheme.typography.labelSmall) }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = { photoPickerLauncher.launch("image/*") },
+                    enabled = !busy && !atLimit,
+                ) {
+                    Text("Pick from storage")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TextField(
+                    value = photoUrlInput,
+                    onValueChange = { photoUrlInput = it },
+                    label = { Text("Or paste image URL") },
+                    modifier = Modifier.weight(1f),
+                )
+                Button(
+                    onClick = {
+                        val trimmed = photoUrlInput.trim()
+                        if (trimmed.isNotBlank() && (trimmed.startsWith("http://") || trimmed.startsWith("https://"))) {
+                            photoUrls = photoUrls + trimmed
+                            photoUrlInput = ""
+                        }
+                    },
+                    enabled = !busy && photoUrlInput.isNotBlank() && !atLimit,
+                ) {
+                    Text("Add URL")
                 }
             }
 
@@ -612,8 +877,7 @@ private fun ListingFormScreen(
                             preferredTenant = preferredTenant,
                             status = initialListing?.status ?: ListingStatus.ACTIVE,
                         )
-                        val dummyPhotoBytes = List(photosCount) { ByteArray(10) }
-                        onSave(listing, dummyPhotoBytes)
+                        onSave(listing, selectedDevicePhotos, photoUrls)
                     },
                     enabled = !busy && title.isNotBlank() && address.isNotBlank() && (rentText.toDoubleOrNull() ?: 0.0) > 0,
                 ) {

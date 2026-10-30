@@ -18,7 +18,7 @@ class DwellyServiceTest {
         add(landlord, "pw")
         add(admin, "pw")
     }
-    private val dwelly = DwellyService(auth, FakeForumApi())
+    private val dwelly = DwellyService(auth, FakeForumApi(), FakeListingApi())
 
     @Test
     fun loginLoadsTheUserWithTheirRole() = runBlocking {

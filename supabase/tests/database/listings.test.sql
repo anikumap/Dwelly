@@ -2,7 +2,7 @@
 -- Run with: npx supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(24);
+select plan(29);
 
 -- Fixtures (run as postgres) ------------------------------------------------
 insert into auth.users (id, email, raw_user_meta_data) values
@@ -45,6 +45,27 @@ select is(
     (select views::int from public.listing_stats where listing_id = (select listing_id from public.listings limit 1)),
     0,
     'listing_stats starts at 0 views'
+);
+
+-- Direct listing updates and inserts are refused for landlords
+select throws_ok(
+    $$update public.listings set status = 'ACTIVE'$$,
+    '42501', null,
+    'landlord cannot update listings table directly'
+);
+
+select throws_ok(
+    $$insert into public.listings (landlord_id, title, address, lat, lng, rent, property_type)
+      values ('11111111-0000-0000-0000-000000000001', 'Direct', 'Addr', 12.0, 77.0, 1000, 'APARTMENT')$$,
+    '42501', null,
+    'landlord cannot insert listings table directly'
+);
+
+-- Landlord cannot record stats (only tenants can)
+select throws_ok(
+    $$select public.record_stat((select listing_id from public.listings limit 1), 'VIEW'::public.stat_metric)$$,
+    'P0001', 'accessDenied',
+    'landlord cannot call record_stat'
 );
 
 -- Landlord 2 isolation ------------------------------------------------------
@@ -140,6 +161,13 @@ select lives_ok(
     'landlord pauses active listing'
 );
 
+-- Disallowed transition: same status PAUSED -> PAUSED
+select throws_ok(
+    $$select public.change_listing_status((select listing_id from public.listings limit 1), 'PAUSED')$$,
+    'P0001', 'rejectChange: cannot transition from PAUSED to PAUSED',
+    'cannot change to same status'
+);
+
 -- PAUSED -> ACTIVE (resume)
 select lives_ok(
     $$select public.change_listing_status((select listing_id from public.listings limit 1), 'ACTIVE')$$,
@@ -176,4 +204,6 @@ select throws_ok(
 );
 
 reset role;
-commit;
+
+select * from finish();
+rollback;

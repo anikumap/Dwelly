@@ -3,7 +3,6 @@ package com.example.dwelly.service
 import com.example.dwelly.data.AuthApi
 import com.example.dwelly.data.ForumApi
 import com.example.dwelly.data.ListingApi
-import com.example.dwelly.data.SupabaseListingApi
 import com.example.dwelly.data.serverCall
 import com.example.dwelly.model.Agreement
 import com.example.dwelly.model.Completeness
@@ -35,7 +34,7 @@ import kotlinx.coroutines.flow.asStateFlow
 class DwellyService(
     private val authApi: AuthApi,
     forumApi: ForumApi,
-    listingApi: ListingApi = SupabaseListingApi(),
+    listingApi: ListingApi,
 ) {
     private val _currentUser = MutableStateFlow<User?>(null)
 
@@ -116,8 +115,12 @@ class DwellyService(
 
     // Listings (Person B) ----------------------------------------------------
 
-    suspend fun createListing(listing: Listing, photos: List<ByteArray> = emptyList()): Result<Listing> =
-        listingService.create(listing, photos)
+    suspend fun createListing(
+        listing: Listing,
+        photos: List<ByteArray> = emptyList(),
+        photoUrls: List<String> = emptyList(),
+    ): Result<Listing> =
+        listingService.create(listing, photos, photoUrls)
 
     suspend fun updateListing(listing: Listing): Result<Listing> = listingService.update(listing)
 
@@ -129,6 +132,9 @@ class DwellyService(
 
     suspend fun uploadPhoto(listingId: String, bytes: ByteArray, position: Int): Result<ListingPhoto> =
         listingService.uploadPhoto(listingId, bytes, position)
+
+    suspend fun addPhotoUrl(listingId: String, url: String, position: Int): Result<ListingPhoto> =
+        listingService.addPhotoUrl(listingId, url, position)
 
     suspend fun getMyListings(): Result<List<ListingOverview>> = listingService.getMyListings()
 

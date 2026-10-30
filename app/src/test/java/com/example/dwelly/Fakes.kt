@@ -106,7 +106,7 @@ class FakeListingApi : ListingApi {
         calls += "changeListingStatus:$listingId:$status"
         val current = listings[listingId] ?: throw DwellyError.AccessDenied()
         val currStatus = current.status
-        if (currStatus == status) return current
+        if (currStatus == status) throw DwellyError.RejectChange("cannot transition from $currStatus to $status")
 
         val allowed = when (currStatus) {
             ListingStatus.ACTIVE -> status in listOf(ListingStatus.PAUSED, ListingStatus.RENTED, ListingStatus.DELETED)
@@ -138,6 +138,18 @@ class FakeListingApi : ListingApi {
         calls += "uploadPhoto:$listingId:$position"
         val list = photos.getOrPut(listingId) { mutableListOf() }
         val photo = ListingPhoto("photo-${list.size + 1}", listingId, "https://example.com/photos/$position.jpg", position)
+        list.add(photo)
+        return photo
+    }
+
+    override suspend fun addPhotoUrl(
+        listingId: String,
+        url: String,
+        position: Int,
+    ): ListingPhoto {
+        calls += "addPhotoUrl:$listingId:$url:$position"
+        val list = photos.getOrPut(listingId) { mutableListOf() }
+        val photo = ListingPhoto("photo-${list.size + 1}", listingId, url, position)
         list.add(photo)
         return photo
     }

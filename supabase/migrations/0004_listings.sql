@@ -6,7 +6,7 @@ revoke all on public.listings, public.listing_photos, public.listing_stats,
     public.listing_views, public.listing_saves, public.enquiries
     from anon;
 
-grant select, insert, update on public.listings to authenticated;
+grant select on public.listings to authenticated;
 grant select, insert, update, delete on public.listing_photos to authenticated;
 grant select on public.listing_stats to authenticated;
 grant select on public.enquiries to authenticated;
@@ -34,6 +34,8 @@ grant execute on function public.is_tenant_on_agreement(uuid, uuid) to authentic
 
 -- RLS: listings -------------------------------------------------------------
 -- Drop existing policies first so this script is idempotent / re-runnable.
+-- Note: direct INSERT and UPDATE on public.listings are disallowed. All writes go through
+-- security definer functions (create_listing, update_listing, change_listing_status).
 drop policy if exists listings_select on public.listings;
 drop policy if exists listings_insert on public.listings;
 drop policy if exists listings_update on public.listings;
@@ -45,24 +47,6 @@ create policy listings_select on public.listings
         landlord_id = (select auth.uid())
         or (public.current_user_role() = 'TENANT' and status = 'ACTIVE')
         or public.is_tenant_on_agreement(listing_id, (select auth.uid()))
-    );
-
-create policy listings_insert on public.listings
-    for insert to authenticated
-    with check (
-        public.current_user_role() = 'LANDLORD'
-        and landlord_id = (select auth.uid())
-    );
-
-create policy listings_update on public.listings
-    for update to authenticated
-    using (
-        public.current_user_role() = 'LANDLORD'
-        and landlord_id = (select auth.uid())
-    )
-    with check (
-        public.current_user_role() = 'LANDLORD'
-        and landlord_id = (select auth.uid())
     );
 
 -- RLS: listing_photos -------------------------------------------------------
@@ -320,11 +304,6 @@ begin
         raise exception 'accessDenied';
     end if;
 
-    if v_current_status = p_status then
-        select * into v_listing from public.listings where listing_id = p_listing_id;
-        return v_listing;
-    end if;
-
     if v_current_status = 'ACTIVE' and p_status in ('PAUSED', 'RENTED', 'DELETED') then
         -- allowed
     elsif v_current_status = 'PAUSED' and p_status in ('ACTIVE', 'RENTED', 'DELETED') then
@@ -361,7 +340,7 @@ declare
     v_inserted boolean;
     v_rows integer;
 begin
-    if auth.uid() is null then
+    if auth.uid() is null or public.current_user_role() is distinct from 'TENANT' then
         raise exception 'accessDenied';
     end if;
 

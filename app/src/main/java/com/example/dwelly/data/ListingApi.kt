@@ -24,6 +24,7 @@ interface ListingApi {
     suspend fun getMyListings(landlordId: String): List<Listing>
     suspend fun getPhotos(listingId: String): List<ListingPhoto>
     suspend fun uploadPhoto(listingId: String, landlordId: String, bytes: ByteArray, position: Int): ListingPhoto
+    suspend fun addPhotoUrl(listingId: String, url: String, position: Int): ListingPhoto
     suspend fun getStats(listingId: String): ListingStats?
     suspend fun recordStat(metric: StatMetric, listingId: String, message: String? = null, saved: Boolean? = null)
 }
@@ -118,16 +119,11 @@ class SupabaseListingApi(private val client: () -> SupabaseClient = { SupabasePr
         position: Int,
     ): ListingPhoto {
         val path = "$landlordId/$listingId/$position.jpg"
-        var url = "https://picsum.photos/seed/$listingId-$position/800/600"
-        try {
-            val bucket = client().storage.from("listing-photos")
-            bucket.upload(path, bytes) {
-                upsert = true
-            }
-            url = bucket.publicUrl(path)
-        } catch (_: Exception) {
-            // Storage upload fallback if bucket is not yet initialized
+        val bucket = client().storage.from("listing-photos")
+        bucket.upload(path, bytes) {
+            upsert = true
         }
+        val url = bucket.publicUrl(path)
         return client().from("listing_photos").insert(
             buildJsonObject {
                 put("listing_id", listingId)
@@ -138,6 +134,20 @@ class SupabaseListingApi(private val client: () -> SupabaseClient = { SupabasePr
             select()
         }.decodeSingle<ListingPhoto>()
     }
+
+    override suspend fun addPhotoUrl(
+        listingId: String,
+        url: String,
+        position: Int,
+    ): ListingPhoto = client().from("listing_photos").insert(
+        buildJsonObject {
+            put("listing_id", listingId)
+            put("url", url)
+            put("position", position)
+        }
+    ) {
+        select()
+    }.decodeSingle<ListingPhoto>()
 
     override suspend fun getStats(listingId: String): ListingStats? =
         client().from("listing_stats").select {
