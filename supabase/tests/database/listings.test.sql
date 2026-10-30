@@ -89,7 +89,21 @@ select throws_ok(
 );
 
 -- Landlord 2 isolation ------------------------------------------------------
+-- Look up landlord 1's listing id as postgres, since landlord 2 can't see it.
+reset role;
+select set_config('test.l1', (select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001')::text, true);
+set local role authenticated;
 set local request.jwt.claims = '{"sub": "11111111-0000-0000-0000-000000000002", "role": "authenticated"}';
+
+-- The listing is still ACTIVE here, so only the ownership check can refuse this.
+select throws_ok(
+    $$insert into public.listing_photos (listing_id, url, position)
+      values (current_setting('test.l1')::uuid,
+              'https://ref.supabase.co/storage/v1/object/public/listing-photos/11111111-0000-0000-0000-000000000002/'
+              || current_setting('test.l1') || '/5.jpg', 5)$$,
+    '42501', null,
+    'landlord 2 cannot add photos to landlord 1 listing'
+);
 
 select is(
     (select count(*)::int from public.listings),
@@ -230,21 +244,6 @@ select throws_ok(
       values ((select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001'), 'https://ref.supabase.co/storage/v1/object/public/listing-photos/11111111-0000-0000-0000-000000000001/' || (select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001')::text || '/1.jpg', 1)$$,
     '42501', null,
     'deleted listing cannot get new photos'
-);
-
--- Landlord 2 cannot add photos to landlord 1's listing (run as postgres to look up the id)
-reset role;
-select set_config('test.l1', (select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001')::text, true);
-set local role authenticated;
-set local request.jwt.claims = '{"sub": "11111111-0000-0000-0000-000000000002", "role": "authenticated"}';
-
-select throws_ok(
-    $$insert into public.listing_photos (listing_id, url, position)
-      values (current_setting('test.l1')::uuid,
-              'https://ref.supabase.co/storage/v1/object/public/listing-photos/11111111-0000-0000-0000-000000000002/'
-              || current_setting('test.l1') || '/5.jpg', 5)$$,
-    '42501', null,
-    'landlord 2 cannot add photos to landlord 1 listing'
 );
 
 reset role;

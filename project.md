@@ -19,6 +19,8 @@ Not yet verified: `npx supabase test db` (pgTAP), which needs Docker.
 
 ### Database (`supabase/migrations/0004_listings.sql`)
 
+- All six Process 2.0 tables start with `revoke all ... from anon, authenticated` (Supabase's defaults grant
+  everything), then grant back only what's needed.
 - `listings` is read-only for clients (`select` only, no insert or update policies). Every write goes through the
   `create_listing`, `update_listing` and `change_listing_status` security definer RPCs.
 - `change_listing_status` follows the LOGIC §2 table exactly. A same-status request (PAUSED → PAUSED) is `rejectChange`.
@@ -55,8 +57,9 @@ Not yet verified: `npx supabase test db` (pgTAP), which needs Docker.
 
 ## 3. Next Steps
 
-- **Re-apply 0004** on the linked Supabase project. It was applied by hand earlier, so `db push` won't re-run it:
-  run the file in the SQL editor, then `NOTIFY pgrst, 'reload schema';`.
+- **Re-apply 0004** on the linked Supabase project. Check `npx supabase migration list` first. If 0004 shows as
+  applied, `db push` won't re-run it, so run the edited file in the SQL editor (it is safe to re-run), then
+  `NOTIFY pgrst, 'reload schema';`. If it isn't listed, `npx supabase db push` applies it.
 - **Run pgTAP** with Docker: `npx supabase start`, then `npx supabase test db`.
 - **Check with Person C**: the `CREATE_AGREEMENT` route is registered in `DwellyNavHost`. Confirm that they own the
   destination composable.

@@ -1,14 +1,14 @@
 -- Process 2.0 Manage Listings (Person B). ARCHITECTURE §6, §8, LOGIC §2, §4.1, §4.4, §5.
 -- Tables: listings, listing_photos, listing_stats, listing_views, listing_saves, enquiries.
 
--- Revoke anon access from all Process 2.0 tables
+-- Start from no privileges (Supabase's defaults grant authenticated everything), then grant
+-- back only what clients need, as 0002 does for users. Writes go through the RPCs below.
 revoke all on public.listings, public.listing_photos, public.listing_stats,
     public.listing_views, public.listing_saves, public.enquiries
-    from anon;
+    from anon, authenticated;
 
 grant select on public.listings to authenticated;
 -- Photos are only ever added (ARCH: "upload photos"); there is no edit or remove-photo operation.
-revoke update, delete on public.listing_photos from authenticated;
 grant select, insert on public.listing_photos to authenticated;
 grant select on public.listing_stats to authenticated;
 grant select on public.enquiries to authenticated;
