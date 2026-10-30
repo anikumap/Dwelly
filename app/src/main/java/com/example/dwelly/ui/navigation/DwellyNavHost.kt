@@ -29,7 +29,9 @@ import com.example.dwelly.ui.auth.LoginScreen
 import com.example.dwelly.ui.auth.RegisterScreen
 import com.example.dwelly.ui.forum.ThreadListScreen
 import com.example.dwelly.ui.forum.ThreadScreen
-import com.example.dwelly.ui.landlord.LandlordScreen
+import com.example.dwelly.ui.tenant.TenantAgreementScreen
+import com.example.dwelly.ui.tenant.TenantDiscoveryScreen
+import com.example.dwelly.ui.tenant.TenantHomeScreen
 import kotlinx.coroutines.launch
 
 private object Routes {
@@ -39,10 +41,8 @@ private object Routes {
     const val TENANT = "tenant"
     const val ADMIN = "admin"
     const val THREAD = "thread/{threadId}?title={title}"
-    const val CREATE_AGREEMENT = "agreement/create/{listingId}"
 
     fun thread(threadId: String, title: String) = "thread/$threadId?title=${Uri.encode(title)}"
-    fun createAgreement(listingId: String) = "agreement/create/$listingId"
 }
 
 /**
@@ -82,21 +82,7 @@ fun DwellyNavHost(dwelly: DwellyService, modifier: Modifier = Modifier) {
                 RegisterScreen(dwelly, onBack = { nav.popBackStack() })
             }
             composable(Routes.LANDLORD) {
-                LandlordScreen(
-                    dwelly = dwelly,
-                    onCreateAgreement = { listingId -> nav.navigate(Routes.createAgreement(listingId)) },
-                    onLogout = logout,
-                )
-            }
-            composable(
-                Routes.CREATE_AGREEMENT,
-                arguments = listOf(navArgument("listingId") { type = NavType.StringType }),
-            ) { entry ->
-                val listingId = entry.arguments?.getString("listingId").orEmpty()
-                Column {
-                    Text("Create agreement for listing $listingId (Person C)")
-                    Button(onClick = { nav.popBackStack() }) { Text("Back") }
-                }
+                LandlordDashboard(onLogout = logout)
             }
             composable(Routes.TENANT) {
                 TenantDashboard(
@@ -126,6 +112,15 @@ fun DwellyNavHost(dwelly: DwellyService, modifier: Modifier = Modifier) {
     }
 }
 
+/** Person B builds the dashboard; this is the entry point it replaces. */
+@Composable
+private fun LandlordDashboard(onLogout: () -> Unit) {
+    Column {
+        Text("Landlord dashboard (Person B)")
+        Button(onClick = onLogout) { Text("Log out") }
+    }
+}
+
 private enum class TenantTab(val label: String) { HOME("Home"), DISCOVERY("Discover"), FORUM("Forum"), AGREEMENT("Agreement") }
 
 /**
@@ -139,6 +134,8 @@ private fun TenantDashboard(
     onLogout: () -> Unit,
 ) {
     var tab by rememberSaveable { mutableStateOf(TenantTab.HOME) }
+    var selectedListingId by rememberSaveable { mutableStateOf<String?>(null) }
+
     Column {
         PrimaryTabRow(selectedTabIndex = tab.ordinal) {
             TenantTab.entries.forEach {
@@ -147,10 +144,19 @@ private fun TenantDashboard(
         }
         Button(onClick = onLogout) { Text("Log out") }
         when (tab) {
-            TenantTab.HOME -> Text("Tenant Home (Person C)")
-            TenantTab.DISCOVERY -> Text("Discovery (Person C)")
+            TenantTab.HOME -> TenantHomeScreen(
+                dwelly = dwelly,
+                onOpenListingDetail = { listingId ->
+                    selectedListingId = listingId
+                    tab = TenantTab.DISCOVERY
+                },
+            )
+            TenantTab.DISCOVERY -> TenantDiscoveryScreen(
+                dwelly = dwelly,
+                selectedListingId = selectedListingId,
+            )
             TenantTab.FORUM -> ThreadListScreen(dwelly, onOpenThread)
-            TenantTab.AGREEMENT -> Text("Agreement (Person C)")
+            TenantTab.AGREEMENT -> TenantAgreementScreen(dwelly = dwelly)
         }
     }
 }

@@ -1,8 +1,13 @@
 package com.example.dwelly.service
 
+import com.example.dwelly.data.AgreementApi
 import com.example.dwelly.data.AuthApi
+import com.example.dwelly.data.DiscoveryApi
 import com.example.dwelly.data.ForumApi
 import com.example.dwelly.data.ListingApi
+import com.example.dwelly.data.SupabaseAgreementApi
+import com.example.dwelly.data.SupabaseDiscoveryApi
+import com.example.dwelly.data.SupabaseListingApi
 import com.example.dwelly.data.serverCall
 import com.example.dwelly.model.Agreement
 import com.example.dwelly.model.Completeness
@@ -34,17 +39,25 @@ import kotlinx.coroutines.flow.asStateFlow
 class DwellyService(
     private val authApi: AuthApi,
     forumApi: ForumApi,
-    listingApi: ListingApi,
+    listingApi: ListingApi? = null,
+    discoveryApi: DiscoveryApi? = null,
+    agreementApi: AgreementApi? = null,
 ) {
     private val _currentUser = MutableStateFlow<User?>(null)
 
     /** The signed-in user; null when signed out. The UI routes on its role. */
     val currentUser: StateFlow<User?> = _currentUser.asStateFlow()
 
+    private val effectiveListingApi: ListingApi = listingApi ?: SupabaseListingApi(scoreCalculator = { listing, photos ->
+        listingService.score(listing, photos)
+    })
+    private val effectiveDiscoveryApi: DiscoveryApi = discoveryApi ?: SupabaseDiscoveryApi()
+    private val effectiveAgreementApi: AgreementApi = agreementApi ?: SupabaseAgreementApi()
+
     private val forumService = ForumService(forumApi) { _currentUser.value }
-    private val listingService = ListingService(listingApi) { _currentUser.value }
-    private val discoveryService = DiscoveryService(listingService) { _currentUser.value }
-    private val agreementService = AgreementService { _currentUser.value }
+    private val listingService = ListingService(forumService, effectiveListingApi) { _currentUser.value }
+    private val discoveryService = DiscoveryService(listingService, effectiveDiscoveryApi, effectiveAgreementApi) { _currentUser.value }
+    private val agreementService = AgreementService(effectiveAgreementApi) { _currentUser.value }
 
     // Authentication (Person A) ----------------------------------------------
 
@@ -115,7 +128,7 @@ class DwellyService(
 
     // Listings (Person B) ----------------------------------------------------
 
-    suspend fun createListing(listing: Listing, photos: List<ByteArray> = emptyList()): Result<Listing> =
+    suspend fun createListing(listing: Listing, photos: List<ByteArray>): Result<Listing> =
         listingService.create(listing, photos)
 
     suspend fun updateListing(listing: Listing): Result<Listing> = listingService.update(listing)
@@ -161,4 +174,8 @@ class DwellyService(
     suspend fun signAgreement(agreementId: String): Result<Agreement> = agreementService.sign(agreementId)
 
     suspend fun getAgreement(listingId: String): Result<Agreement> = agreementService.get(listingId)
+
+    suspend fun getMyAgreement(): Result<Agreement?> = agreementService.getMyAgreement()
+
+    suspend fun getTenantIdByEmail(email: String): Result<String> = agreementService.getTenantIdByEmail(email)
 }
