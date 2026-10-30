@@ -5,7 +5,9 @@ import coil3.ImageLoader
 import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
+import com.example.dwelly.data.SupabaseAgreementApi
 import com.example.dwelly.data.SupabaseAuthApi
+import com.example.dwelly.data.SupabaseDiscoveryApi
 import com.example.dwelly.data.SupabaseForumApi
 import com.example.dwelly.data.SupabaseListingApi
 import com.example.dwelly.service.DwellyService
@@ -14,7 +16,13 @@ import okhttp3.OkHttpClient
 class DwellyApplication : Application() {
 
     val dwellyService: DwellyService by lazy {
-        DwellyService(SupabaseAuthApi(), SupabaseForumApi(), SupabaseListingApi())
+        DwellyService(
+            SupabaseAuthApi(),
+            SupabaseForumApi(),
+            SupabaseListingApi(),
+            SupabaseDiscoveryApi(),
+            SupabaseAgreementApi(),
+        )
     }
 
     override fun onCreate() {

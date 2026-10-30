@@ -25,11 +25,15 @@ import androidx.navigation.navArgument
 import com.example.dwelly.model.Role
 import com.example.dwelly.service.DwellyService
 import com.example.dwelly.ui.admin.ModerationScreen
+import com.example.dwelly.ui.agreement.LandlordAgreementScreen
 import com.example.dwelly.ui.auth.LoginScreen
 import com.example.dwelly.ui.auth.RegisterScreen
 import com.example.dwelly.ui.forum.ThreadListScreen
 import com.example.dwelly.ui.forum.ThreadScreen
 import com.example.dwelly.ui.landlord.LandlordScreen
+import com.example.dwelly.ui.tenant.TenantAgreementScreen
+import com.example.dwelly.ui.tenant.TenantDiscoveryScreen
+import com.example.dwelly.ui.tenant.TenantHomeScreen
 import kotlinx.coroutines.launch
 
 private object Routes {
@@ -92,11 +96,11 @@ fun DwellyNavHost(dwelly: DwellyService, modifier: Modifier = Modifier) {
                 Routes.CREATE_AGREEMENT,
                 arguments = listOf(navArgument("listingId") { type = NavType.StringType }),
             ) { entry ->
-                val listingId = entry.arguments?.getString("listingId").orEmpty()
-                Column {
-                    Text("Create agreement for listing $listingId (Person C)")
-                    Button(onClick = { nav.popBackStack() }) { Text("Back") }
-                }
+                LandlordAgreementScreen(
+                    dwelly = dwelly,
+                    listingId = entry.arguments?.getString("listingId").orEmpty(),
+                    onBack = { nav.popBackStack() },
+                )
             }
             composable(Routes.TENANT) {
                 TenantDashboard(
@@ -139,6 +143,8 @@ private fun TenantDashboard(
     onLogout: () -> Unit,
 ) {
     var tab by rememberSaveable { mutableStateOf(TenantTab.HOME) }
+    // A listing opened from Home is shown on the Discover tab.
+    var selectedListingId by rememberSaveable { mutableStateOf<String?>(null) }
     Column {
         PrimaryTabRow(selectedTabIndex = tab.ordinal) {
             TenantTab.entries.forEach {
@@ -147,10 +153,16 @@ private fun TenantDashboard(
         }
         Button(onClick = onLogout) { Text("Log out") }
         when (tab) {
-            TenantTab.HOME -> Text("Tenant Home (Person C)")
-            TenantTab.DISCOVERY -> Text("Discovery (Person C)")
+            TenantTab.HOME -> TenantHomeScreen(
+                dwelly = dwelly,
+                onOpenListingDetail = { listingId ->
+                    selectedListingId = listingId
+                    tab = TenantTab.DISCOVERY
+                },
+            )
+            TenantTab.DISCOVERY -> TenantDiscoveryScreen(dwelly = dwelly, selectedListingId = selectedListingId)
             TenantTab.FORUM -> ThreadListScreen(dwelly, onOpenThread)
-            TenantTab.AGREEMENT -> Text("Agreement (Person C)")
+            TenantTab.AGREEMENT -> TenantAgreementScreen(dwelly = dwelly)
         }
     }
 }

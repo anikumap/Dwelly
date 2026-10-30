@@ -1,6 +1,8 @@
 package com.example.dwelly.service
 
+import com.example.dwelly.data.AgreementApi
 import com.example.dwelly.data.AuthApi
+import com.example.dwelly.data.DiscoveryApi
 import com.example.dwelly.data.ForumApi
 import com.example.dwelly.data.ListingApi
 import com.example.dwelly.data.serverCall
@@ -35,6 +37,8 @@ class DwellyService(
     private val authApi: AuthApi,
     forumApi: ForumApi,
     listingApi: ListingApi,
+    discoveryApi: DiscoveryApi,
+    agreementApi: AgreementApi,
 ) {
     private val _currentUser = MutableStateFlow<User?>(null)
 
@@ -43,8 +47,8 @@ class DwellyService(
 
     private val forumService = ForumService(forumApi) { _currentUser.value }
     private val listingService = ListingService(listingApi) { _currentUser.value }
-    private val discoveryService = DiscoveryService(listingService) { _currentUser.value }
-    private val agreementService = AgreementService { _currentUser.value }
+    private val discoveryService = DiscoveryService(listingService, discoveryApi, agreementApi) { _currentUser.value }
+    private val agreementService = AgreementService(agreementApi) { _currentUser.value }
 
     // Authentication (Person A) ----------------------------------------------
 
@@ -160,5 +164,9 @@ class DwellyService(
 
     suspend fun signAgreement(agreementId: String): Result<Agreement> = agreementService.sign(agreementId)
 
-    suspend fun getAgreement(listingId: String): Result<Agreement> = agreementService.get(listingId)
+    suspend fun getAgreement(listingId: String): Result<Agreement?> = agreementService.get(listingId)
+
+    suspend fun getMyAgreement(): Result<Agreement?> = agreementService.getMyAgreement()
+
+    suspend fun getTenantIdByEmail(email: String): Result<String> = agreementService.getTenantIdByEmail(email)
 }
