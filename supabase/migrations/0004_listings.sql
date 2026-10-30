@@ -158,6 +158,11 @@ create function public.update_listing(
     p_listing_id uuid,
     p_title text,
     p_description text,
+-- RPC: update_listing -------------------------------------------------------
+-- LOGIC §2: Allowed in any state except DELETED. Owner only.
+create or replace function public.update_listing(
+    p_listing_id uuid,
+    p_title text,
     p_address text,
     p_lat double precision,
     p_lng double precision,

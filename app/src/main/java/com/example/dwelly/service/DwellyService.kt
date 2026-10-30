@@ -128,7 +128,7 @@ class DwellyService(
 
     // Listings (Person B) ----------------------------------------------------
 
-    suspend fun createListing(listing: Listing, photos: List<ByteArray>): Result<Listing> =
+    suspend fun createListing(listing: Listing, photos: List<ByteArray> = emptyList()): Result<Listing> =
         listingService.create(listing, photos)
 
     suspend fun updateListing(listing: Listing): Result<Listing> = listingService.update(listing)

@@ -7,6 +7,7 @@ import com.example.dwelly.model.DwellyError
 import com.example.dwelly.model.Listing
 import com.example.dwelly.model.ListingOverview
 import com.example.dwelly.model.ListingPhoto
+import com.example.dwelly.model.ListingStats
 import com.example.dwelly.model.ListingStatus
 import com.example.dwelly.model.Role
 import com.example.dwelly.model.StatMetric
