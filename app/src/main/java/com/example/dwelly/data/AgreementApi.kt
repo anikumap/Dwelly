@@ -10,6 +10,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.put
 
+/** Process 4.0 Agreements. Backed by the SQL functions in 0005_agreements.sql. */
 interface AgreementApi {
     suspend fun createAgreement(listingId: String, tenantId: String): Agreement
     suspend fun editAgreement(agreementId: String, terms: Map<String, String>): Agreement
@@ -24,61 +25,44 @@ class SupabaseAgreementApi(
     private val client: () -> SupabaseClient = { SupabaseProvider.client },
 ) : AgreementApi {
 
-    override suspend fun createAgreement(listingId: String, tenantId: String): Agreement {
-        val json = buildJsonObject {
+    override suspend fun createAgreement(listingId: String, tenantId: String): Agreement =
+        client().postgrest.rpc("create_agreement", buildJsonObject {
             put("p_listing_id", listingId)
             put("p_tenant_id", tenantId)
-        }
-        return client().postgrest.rpc("create_agreement", json).decodeAs()
-    }
+        }).decodeAs()
 
-    override suspend fun editAgreement(agreementId: String, terms: Map<String, String>): Agreement {
-        val json = buildJsonObject {
+    override suspend fun editAgreement(agreementId: String, terms: Map<String, String>): Agreement =
+        client().postgrest.rpc("edit_agreement", buildJsonObject {
             put("p_agreement_id", agreementId)
             put("p_terms", Json.encodeToJsonElement(terms))
-        }
-        return client().postgrest.rpc("edit_agreement", json).decodeAs()
-    }
+        }).decodeAs()
 
-    override suspend fun sendAgreement(agreementId: String): Agreement {
-        val json = buildJsonObject {
+    override suspend fun sendAgreement(agreementId: String): Agreement =
+        client().postgrest.rpc("send_agreement", buildJsonObject {
             put("p_agreement_id", agreementId)
-        }
-        return client().postgrest.rpc("send_agreement", json).decodeAs()
-    }
+        }).decodeAs()
 
-    override suspend fun signAgreement(agreementId: String): Agreement {
-        val json = buildJsonObject {
+    override suspend fun signAgreement(agreementId: String): Agreement =
+        client().postgrest.rpc("sign_agreement", buildJsonObject {
             put("p_agreement_id", agreementId)
-        }
-        return client().postgrest.rpc("sign_agreement", json).decodeAs()
-    }
+        }).decodeAs()
 
+    /** RLS shows a landlord their own agreements and a tenant theirs from SENT onward. */
     override suspend fun getAgreementByListing(listingId: String): Agreement? =
-        try {
-            client().from("agreements").select {
-                filter { eq("listing_id", listingId) }
-            }.decodeList<Agreement>().firstOrNull()
-        } catch (_: Exception) {
-            null
-        }
+        client().from("agreements").select {
+            filter { eq("listing_id", listingId) }
+        }.decodeSingleOrNull()
 
     override suspend fun getTenantAgreement(tenantId: String): Agreement? =
-        try {
-            client().from("agreements").select {
-                filter { eq("tenant_id", tenantId) }
-            }.decodeList<Agreement>().firstOrNull {
-                it.status == AgreementStatus.SENT || it.status == AgreementStatus.SIGNED
+        client().from("agreements").select {
+            filter {
+                eq("tenant_id", tenantId)
+                isIn("status", listOf(AgreementStatus.SENT.name, AgreementStatus.SIGNED.name))
             }
-        } catch (_: Exception) {
-            null
-        }
+        }.decodeList<Agreement>().firstOrNull()
 
     override suspend fun getTenantIdByEmail(email: String): String? =
-        try {
-            client().postgrest.rpc("get_tenant_id_by_email", buildJsonObject { put("p_email", email) })
-                .decodeAsOrNull<String>()
-        } catch (_: Exception) {
-            null
-        }
+        client().postgrest.rpc("get_tenant_id_by_email", buildJsonObject {
+            put("p_email", email.trim())
+        }).decodeAsOrNull()
 }

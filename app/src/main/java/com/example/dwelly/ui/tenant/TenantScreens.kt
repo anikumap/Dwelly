@@ -1,5 +1,6 @@
 package com.example.dwelly.ui.tenant
 
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.graphics.Paint
@@ -17,7 +18,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -78,28 +78,28 @@ fun TenantHomeScreen(dwelly: DwellyService, onOpenListingDetail: (String) -> Uni
     val tenant = user as? Tenant
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Home", style = MaterialTheme.typography.titleLarge)
+        Text("Home")
         tenant?.location?.let {
             Text("Location: ${it.label}")
         } ?: Text("No location set (Set in Discover tab)")
 
-        vm.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        vm.message?.let { Text(it) }
 
         Spacer(Modifier.height(8.dp))
 
         when (val home = vm.homeData) {
             is TenantHome.Resident -> {
-                Text("Your Rented Property:", style = MaterialTheme.typography.titleMedium)
+                Text("Your Rented Property:")
                 Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                     Column(Modifier.padding(16.dp)) {
-                        Text(home.property.listing.title, style = MaterialTheme.typography.titleMedium)
+                        Text(home.property.listing.title)
                         Text(home.property.listing.address)
                         Text("Rent: INR ${home.property.listing.rent}/mo")
                     }
                 }
             }
             is TenantHome.Seeker -> {
-                Text("Recently Viewed", style = MaterialTheme.typography.titleMedium)
+                Text("Recently Viewed")
                 if (home.recentlyViewed.isEmpty()) {
                     Text("No recently viewed listings.")
                 } else {
@@ -113,7 +113,7 @@ fun TenantHomeScreen(dwelly: DwellyService, onOpenListingDetail: (String) -> Uni
                 }
 
                 Spacer(Modifier.height(8.dp))
-                Text("Popular Listings", style = MaterialTheme.typography.titleMedium)
+                Text("Popular Listings")
                 if (home.popular.isEmpty()) {
                     Text("No popular listings available.")
                 } else {
@@ -204,9 +204,11 @@ fun TenantDiscoveryScreen(dwelly: DwellyService, selectedListingId: String? = nu
     val user by dwelly.currentUser.collectAsState()
     val tenant = user as? Tenant
 
-    var locationInput by rememberSaveable { mutableStateOf("Indiranagar, Bangalore") }
-    var latInput by rememberSaveable { mutableStateOf("12.9716") }
-    var lngInput by rememberSaveable { mutableStateOf("77.5946") }
+    var locationInput by rememberSaveable { mutableStateOf("") }
+    var latInput by rememberSaveable { mutableStateOf("") }
+    var lngInput by rememberSaveable { mutableStateOf("") }
+    val lat = latInput.toDoubleOrNull()?.takeIf { it in -90.0..90.0 }
+    val lng = lngInput.toDoubleOrNull()?.takeIf { it in -180.0..180.0 }
     var enquiryMessage by rememberSaveable { mutableStateOf("") }
     var showEnquiryDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -218,7 +220,7 @@ fun TenantDiscoveryScreen(dwelly: DwellyService, selectedListingId: String? = nu
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-            Text("Discover", style = MaterialTheme.typography.titleLarge)
+            Text("Discover")
             tenant?.location?.let {
                 Text("Loc: ${it.label}")
             }
@@ -227,19 +229,33 @@ fun TenantDiscoveryScreen(dwelly: DwellyService, selectedListingId: String? = nu
         if (vm.promptLocationNeeded || tenant?.location == null) {
             Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 Column(Modifier.padding(12.dp)) {
-                    Text("Set Location to view feed:", style = MaterialTheme.typography.titleSmall)
+                    Text("Set Location to view feed:")
                     OutlinedTextField(
                         value = locationInput,
                         onValueChange = { locationInput = it },
                         label = { Text("Location Name") },
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    Row(Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = latInput,
+                            onValueChange = { latInput = it },
+                            label = { Text("Latitude") },
+                            isError = latInput.isNotEmpty() && lat == null,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(Modifier.padding(horizontal = 4.dp))
+                        OutlinedTextField(
+                            value = lngInput,
+                            onValueChange = { lngInput = it },
+                            label = { Text("Longitude") },
+                            isError = lngInput.isNotEmpty() && lng == null,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                     Button(
-                        onClick = {
-                            val lat = latInput.toDoubleOrNull() ?: 12.97
-                            val lng = lngInput.toDoubleOrNull() ?: 77.59
-                            vm.setLocation(locationInput, lat, lng)
-                        },
+                        onClick = { vm.setLocation(locationInput.trim(), requireNotNull(lat), requireNotNull(lng)) },
+                        enabled = locationInput.isNotBlank() && lat != null && lng != null,
                         modifier = Modifier.padding(top = 8.dp),
                     ) {
                         Text("Set Location")
@@ -248,7 +264,7 @@ fun TenantDiscoveryScreen(dwelly: DwellyService, selectedListingId: String? = nu
             }
         }
 
-        vm.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+        vm.message?.let { Text(it) }
 
         // Sort choices
         Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) {
@@ -260,7 +276,7 @@ fun TenantDiscoveryScreen(dwelly: DwellyService, selectedListingId: String? = nu
                         vm.loadFeed()
                     },
                 )
-                Text(order.name, style = MaterialTheme.typography.bodySmall, modifier = Modifier.align(Alignment.CenterVertically))
+                Text(order.name, modifier = Modifier.align(Alignment.CenterVertically))
             }
         }
 
@@ -271,7 +287,7 @@ fun TenantDiscoveryScreen(dwelly: DwellyService, selectedListingId: String? = nu
         if (detail != null) {
             Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 Column(Modifier.padding(12.dp)) {
-                    Text(detail.listing.title, style = MaterialTheme.typography.titleLarge)
+                    Text(detail.listing.title)
                     Text("INR ${detail.listing.rent}/mo - ${detail.listing.propertyType.name}")
                     Text("Address: ${detail.listing.address}")
                     detail.listing.description?.let { Text("Description: $it") }
@@ -288,6 +304,10 @@ fun TenantDiscoveryScreen(dwelly: DwellyService, selectedListingId: String? = nu
                     Row {
                         Button(onClick = { detail.listing.listingId?.let { vm.saveListing(it, true) } }) {
                             Text("Save")
+                        }
+                        Spacer(Modifier.padding(horizontal = 4.dp))
+                        TextButton(onClick = { detail.listing.listingId?.let { vm.saveListing(it, false) } }) {
+                            Text("Unsave")
                         }
                         Spacer(Modifier.padding(horizontal = 4.dp))
                         Button(onClick = { showEnquiryDialog = true }) {
@@ -326,7 +346,7 @@ fun TenantDiscoveryScreen(dwelly: DwellyService, selectedListingId: String? = nu
             items(vm.feed, key = { it.listingId ?: it.title }) { listing ->
                 Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                     Column(Modifier.padding(12.dp)) {
-                        Text(listing.title, style = MaterialTheme.typography.titleMedium)
+                        Text(listing.title)
                         Text("${listing.propertyType.name} - INR ${listing.rent}")
                         Text(listing.address)
                         TextButton(onClick = { listing.listingId?.let { vm.loadDetail(it) } }) {
@@ -378,32 +398,36 @@ class TenantAgreementViewModel(private val dwelly: DwellyService) : ViewModel() 
 fun TenantAgreementScreen(dwelly: DwellyService) {
     val vm = viewModel { TenantAgreementViewModel(dwelly) }
     val context = LocalContext.current
+    var pdfError by remember { mutableStateOf<String?>(null) }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Rental Agreement", style = MaterialTheme.typography.titleLarge)
-        vm.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+        Text("Rental Agreement")
+        vm.message?.let { Text(it) }
+        pdfError?.let { Text(it) }
 
         val ag = vm.agreement
         if (ag != null) {
             Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 Column(Modifier.padding(16.dp)) {
-                    Text("Status: ${ag.status.name}", style = MaterialTheme.typography.titleMedium)
+                    Text("Status: ${ag.status.name}")
                     Text("Landlord Signed: ${ag.landlordSignedAt ?: "Pending"}")
                     Text("Tenant Signed: ${ag.tenantSignedAt ?: "Pending"}")
 
                     Spacer(Modifier.height(8.dp))
-                    Text("Terms:", style = MaterialTheme.typography.titleSmall)
+                    Text("Terms:")
                     ag.terms.forEach { (key, value) ->
                         Text("$key: $value")
                     }
 
                     Spacer(Modifier.height(12.dp))
                     Row {
-                        if (ag.tenantSignedAt == null) {
+                        if (ag.status == com.example.dwelly.model.AgreementStatus.SENT && ag.tenantSignedAt == null) {
                             Button(onClick = vm::sign) { Text("Sign Agreement") }
                             Spacer(Modifier.padding(horizontal = 4.dp))
                         }
-                        Button(onClick = { downloadAgreementPdf(context, ag) }) {
+                        Button(onClick = {
+                            pdfError = if (downloadAgreementPdf(context, ag)) null else "No app on this device can open PDFs."
+                        }) {
                             Text("Download PDF")
                         }
                     }
@@ -418,49 +442,60 @@ fun TenantAgreementScreen(dwelly: DwellyService) {
     }
 }
 
-fun downloadAgreementPdf(context: Context, agreement: Agreement) {
-    val pdfDocument = PdfDocument()
-    val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
-    val page = pdfDocument.startPage(pageInfo)
-    val canvas = page.canvas
-    val paint = Paint()
-    paint.textSize = 14f
-
-    var y = 50f
-    canvas.drawText("RENTAL AGREEMENT", 50f, y, paint)
-    y += 30f
-    paint.textSize = 10f
-    canvas.drawText("Status: ${agreement.status.name}", 50f, y, paint)
-    y += 20f
-    canvas.drawText("Agreement ID: ${agreement.agreementId}", 50f, y, paint)
-    y += 20f
-    canvas.drawText("Landlord Signed: ${agreement.landlordSignedAt ?: "Not Signed"}", 50f, y, paint)
-    y += 20f
-    canvas.drawText("Tenant Signed: ${agreement.tenantSignedAt ?: "Not Signed"}", 50f, y, paint)
-    y += 30f
-
-    paint.textSize = 12f
-    canvas.drawText("Terms:", 50f, y, paint)
-    y += 20f
-    paint.textSize = 10f
-
-    agreement.terms.forEach { (k, v) ->
-        if (y < 800) {
-            canvas.drawText("$k: $v", 50f, y, paint)
-            y += 20f
+/** Writes the agreement to a PDF in the cache and opens it. Returns false if no app can open PDFs. */
+fun downloadAgreementPdf(context: Context, agreement: Agreement): Boolean {
+    val lines = buildList {
+        add("RENTAL AGREEMENT")
+        add("")
+        add("Status: ${agreement.status.name}")
+        add("Agreement ID: ${agreement.agreementId}")
+        add("Landlord signed: ${agreement.landlordSignedAt ?: "not signed"}")
+        add("Tenant signed: ${agreement.tenantSignedAt ?: "not signed"}")
+        add("")
+        agreement.terms.toSortedMap().forEach { (clause, text) ->
+            addAll(wrap("$clause: $text", maxChars = 90))
+            add("")
         }
     }
 
-    pdfDocument.finishPage(page)
+    val pdf = PdfDocument()
+    val paint = Paint().apply { textSize = 10f }
+    val lineHeight = 16f
+    val linesPerPage = ((842 - 100) / lineHeight).toInt()
+    lines.chunked(linesPerPage).forEachIndexed { index, pageLines ->
+        val page = pdf.startPage(PdfDocument.PageInfo.Builder(595, 842, index + 1).create())
+        pageLines.forEachIndexed { i, line -> page.canvas.drawText(line, 50f, 50f + i * lineHeight, paint) }
+        pdf.finishPage(page)
+    }
 
     val file = File(context.cacheDir, "agreement_${agreement.agreementId}.pdf")
-    file.outputStream().use { pdfDocument.writeTo(it) }
-    pdfDocument.close()
+    file.outputStream().use { pdf.writeTo(it) }
+    pdf.close()
 
     val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     val intent = Intent(Intent.ACTION_VIEW).apply {
         setDataAndType(uri, "application/pdf")
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
-    context.startActivity(Intent.createChooser(intent, "Open Agreement PDF"))
+    return try {
+        context.startActivity(Intent.createChooser(intent, "Open Agreement PDF"))
+        true
+    } catch (_: ActivityNotFoundException) {
+        false
+    }
+}
+
+private fun wrap(text: String, maxChars: Int): List<String> {
+    val out = mutableListOf<String>()
+    var line = StringBuilder()
+    text.split(" ").forEach { word ->
+        if (line.isNotEmpty() && line.length + 1 + word.length > maxChars) {
+            out += line.toString()
+            line = StringBuilder()
+        }
+        if (line.isNotEmpty()) line.append(' ')
+        line.append(word)
+    }
+    if (line.isNotEmpty()) out += line.toString()
+    return out
 }

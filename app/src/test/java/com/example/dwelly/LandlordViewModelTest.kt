@@ -23,7 +23,7 @@ import org.junit.Test
 class LandlordViewModelTest {
     private val listingApi = FakeListingApi()
     private val auth = FakeAuthApi().apply { add(landlord, "pw") }
-    private val dwelly = DwellyService(auth, FakeForumApi(), listingApi)
+    private val dwelly = DwellyService(auth, FakeForumApi(), listingApi, FakeDiscoveryApi(), FakeAgreementApi())
 
     private val listing = Listing(
         listingId = "l-1",

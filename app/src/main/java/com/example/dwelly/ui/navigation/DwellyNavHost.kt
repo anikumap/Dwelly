@@ -25,10 +25,12 @@ import androidx.navigation.navArgument
 import com.example.dwelly.model.Role
 import com.example.dwelly.service.DwellyService
 import com.example.dwelly.ui.admin.ModerationScreen
+import com.example.dwelly.ui.agreement.LandlordAgreementScreen
 import com.example.dwelly.ui.auth.LoginScreen
 import com.example.dwelly.ui.auth.RegisterScreen
 import com.example.dwelly.ui.forum.ThreadListScreen
 import com.example.dwelly.ui.forum.ThreadScreen
+import com.example.dwelly.ui.landlord.LandlordScreen
 import com.example.dwelly.ui.tenant.TenantAgreementScreen
 import com.example.dwelly.ui.tenant.TenantDiscoveryScreen
 import com.example.dwelly.ui.tenant.TenantHomeScreen
@@ -94,11 +96,11 @@ fun DwellyNavHost(dwelly: DwellyService, modifier: Modifier = Modifier) {
                 Routes.CREATE_AGREEMENT,
                 arguments = listOf(navArgument("listingId") { type = NavType.StringType }),
             ) { entry ->
-                val listingId = entry.arguments?.getString("listingId").orEmpty()
-                Column {
-                    Text("Create agreement for listing $listingId (Person C)")
-                    Button(onClick = { nav.popBackStack() }) { Text("Back") }
-                }
+                LandlordAgreementScreen(
+                    dwelly = dwelly,
+                    listingId = entry.arguments?.getString("listingId").orEmpty(),
+                    onBack = { nav.popBackStack() },
+                )
             }
             composable(Routes.TENANT) {
                 TenantDashboard(
@@ -141,8 +143,8 @@ private fun TenantDashboard(
     onLogout: () -> Unit,
 ) {
     var tab by rememberSaveable { mutableStateOf(TenantTab.HOME) }
+    // A listing opened from Home is shown on the Discover tab.
     var selectedListingId by rememberSaveable { mutableStateOf<String?>(null) }
-
     Column {
         PrimaryTabRow(selectedTabIndex = tab.ordinal) {
             TenantTab.entries.forEach {
@@ -158,10 +160,7 @@ private fun TenantDashboard(
                     tab = TenantTab.DISCOVERY
                 },
             )
-            TenantTab.DISCOVERY -> TenantDiscoveryScreen(
-                dwelly = dwelly,
-                selectedListingId = selectedListingId,
-            )
+            TenantTab.DISCOVERY -> TenantDiscoveryScreen(dwelly = dwelly, selectedListingId = selectedListingId)
             TenantTab.FORUM -> ThreadListScreen(dwelly, onOpenThread)
             TenantTab.AGREEMENT -> TenantAgreementScreen(dwelly = dwelly)
         }

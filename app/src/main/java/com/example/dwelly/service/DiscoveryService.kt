@@ -25,113 +25,86 @@ import kotlin.math.sqrt
  */
 class DiscoveryService(
     private val listingService: ListingService,
-    private val discoveryApi: DiscoveryApi? = null,
-    private val agreementApi: AgreementApi? = null,
+    private val discoveryApi: DiscoveryApi,
+    private val agreementApi: AgreementApi,
     private val currentUser: () -> User?,
 ) {
-    private fun getDiscoveryApi(): DiscoveryApi = discoveryApi ?: throw IllegalStateException("DiscoveryApi not provided")
-    private fun getAgreementApi(): AgreementApi = agreementApi ?: throw IllegalStateException("AgreementApi not provided")
-
     /** LOGIC §4.2. No location -> DwellyError.PromptLocation. */
     suspend fun feed(sort: SortOrder, filter: FeedFilter): Result<List<Listing>> {
-        val user = currentUser() ?: return Result.failure(DwellyError.AccessDenied())
-        if (user.role != Role.TENANT) return Result.failure(DwellyError.AccessDenied())
-
-        val tenant = user as Tenant
+        val tenant = currentTenant() ?: return Result.failure(DwellyError.AccessDenied())
         val loc = tenant.location ?: return Result.failure(DwellyError.PromptLocation())
 
         return serverCall {
-            val listings = getDiscoveryApi().getActiveListings()
-
-            val filtered = listings.filter { listing ->
-                if ((filter.minRent != null) && (listing.rent < filter.minRent)) return@filter false
-                if ((filter.maxRent != null) && (listing.rent > filter.maxRent)) return@filter false
-                if ((filter.propertyType != null) && (listing.propertyType != filter.propertyType)) return@filter false
-                if ((filter.furnishing != null) && (listing.furnishing != filter.furnishing)) return@filter false
-                if ((filter.bedrooms != null) && (listing.bedrooms != filter.bedrooms)) return@filter false
-                true
+            val filtered = discoveryApi.getActiveListings().filter { listing ->
+                (filter.minRent == null || listing.rent >= filter.minRent) &&
+                    (filter.maxRent == null || listing.rent <= filter.maxRent) &&
+                    (filter.propertyType == null || listing.propertyType == filter.propertyType) &&
+                    (filter.furnishing == null || listing.furnishing == filter.furnishing) &&
+                    (filter.bedrooms == null || listing.bedrooms == filter.bedrooms)
             }
 
             when (sort) {
                 SortOrder.LATEST -> filtered.sortedByDescending { it.createdAt.orEmpty() }
                 SortOrder.PRICE_LOW_HIGH -> filtered.sortedBy { it.rent }
                 SortOrder.PRICE_HIGH_LOW -> filtered.sortedByDescending { it.rent }
-                SortOrder.NEAREST -> filtered.sortedBy { listing ->
-                    haversineKm(loc.lat, loc.lng, listing.lat, listing.lng)
-                }
+                SortOrder.NEAREST -> filtered.sortedBy { haversineKm(loc.lat, loc.lng, it.lat, it.lng) }
             }
         }
     }
 
-    /** LOGIC §4.3. */
+    /** LOGIC §4.3, messages 13–18: check visibility first, then record the view (D5). */
     suspend fun detail(listingId: String): Result<ListingDetail> {
-        val user = currentUser() ?: return Result.failure(DwellyError.AccessDenied())
-        if (user.role != Role.TENANT) return Result.failure(DwellyError.AccessDenied())
-
+        if (currentTenant() == null) return Result.failure(DwellyError.AccessDenied())
         return serverCall {
-            val photos = getDiscoveryApi().getPhotos(listingId)
-            val listing = checkVisibleListing(listingId, user.userId)
-            listingService.recordStat(StatMetric.VIEW, listingId)
-            ListingDetail(listing, photos)
+            val listing = visibleListing(listingId)
+            listingService.recordStat(StatMetric.VIEW, listingId).getOrThrow()
+            ListingDetail(listing, discoveryApi.getPhotos(listingId))
         }
     }
 
     suspend fun saveListing(listingId: String, saved: Boolean): Result<Unit> {
-        val user = currentUser() ?: return Result.failure(DwellyError.AccessDenied())
-        if (user.role != Role.TENANT) return Result.failure(DwellyError.AccessDenied())
-
+        if (currentTenant() == null) return Result.failure(DwellyError.AccessDenied())
         return serverCall {
-            checkVisibleListing(listingId, user.userId)
-            listingService.recordSaveStat(listingId, saved)
-            Unit
+            visibleListing(listingId)
+            listingService.recordStat(StatMetric.SAVE, listingId, saved = saved).getOrThrow()
         }
     }
 
     suspend fun sendEnquiry(listingId: String, message: String): Result<Unit> {
-        val user = currentUser() ?: return Result.failure(DwellyError.AccessDenied())
-        if (user.role != Role.TENANT) return Result.failure(DwellyError.AccessDenied())
-        if (message.trim().isEmpty()) {
-            return Result.failure(DwellyError.RejectChange("Message cannot be empty"))
-        }
-
+        if (currentTenant() == null) return Result.failure(DwellyError.AccessDenied())
+        if (message.isBlank()) return Result.failure(DwellyError.RejectChange("message is required for enquiry"))
         return serverCall {
-            checkVisibleListing(listingId, user.userId)
-            listingService.recordEnquiryStat(listingId, message)
-            Unit
+            visibleListing(listingId)
+            listingService.recordStat(StatMetric.ENQUIRY, listingId, message = message.trim()).getOrThrow()
         }
     }
 
-    /** LOGIC §4.6. TenantMode is derived here, never stored. */
+    /** LOGIC §4.6. TenantMode is derived here, never stored (plan.md D2). */
     suspend fun getHome(): Result<TenantHome> {
-        val user = currentUser() ?: return Result.failure(DwellyError.AccessDenied())
-        if (user.role != Role.TENANT) return Result.failure(DwellyError.AccessDenied())
-
+        val tenant = currentTenant() ?: return Result.failure(DwellyError.AccessDenied())
         return serverCall {
-            val activeAgreement = getAgreementApi().getTenantAgreement(user.userId)
-            if (activeAgreement != null) {
-                val detailResult = detail(activeAgreement.listingId).getOrThrow()
-                TenantHome.Resident(detailResult)
+            val agreement = agreementApi.getTenantAgreement(tenant.userId)
+            if (agreement != null) {
+                // Opening Home isn't viewing a listing, so this doesn't record a VIEW.
+                val property = visibleListing(agreement.listingId)
+                TenantHome.Resident(ListingDetail(property, discoveryApi.getPhotos(agreement.listingId)))
             } else {
-                val recentlyViewed = getDiscoveryApi().getRecentlyViewedListings(user.userId)
-                val popular = getDiscoveryApi().getPopularListings()
-                TenantHome.Seeker(recentlyViewed, popular)
+                TenantHome.Seeker(
+                    recentlyViewed = discoveryApi.getRecentlyViewedListings(tenant.userId),
+                    popular = discoveryApi.getPopularListings(),
+                )
             }
         }
     }
 
-    private suspend fun checkVisibleListing(listingId: String, tenantId: String): Listing {
-        val activeAgreement = getAgreementApi().getTenantAgreement(tenantId)
-        val isOwnRentedProperty = activeAgreement?.listingId == listingId
+    private fun currentTenant(): Tenant? = currentUser()?.takeIf { it.role == Role.TENANT } as? Tenant
 
-        val foundActive = getDiscoveryApi().getActiveListings().firstOrNull { it.listingId == listingId }
-        if (foundActive != null) return foundActive
-
-        if (isOwnRentedProperty) {
-            return getDiscoveryApi().getListing(listingId) ?: throw DwellyError.ListingUnavailable()
-        }
-
-        throw DwellyError.ListingUnavailable()
-    }
+    /**
+     * LOGIC §4.3 step 14: ACTIVE, or the RESIDENT's own rented property. The listings RLS
+     * policy returns exactly those rows to a tenant, so an unreadable listing is unavailable.
+     */
+    private suspend fun visibleListing(listingId: String): Listing =
+        discoveryApi.getListing(listingId) ?: throw DwellyError.ListingUnavailable()
 
     companion object {
         fun haversineKm(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
@@ -139,10 +112,9 @@ class DiscoveryService(
             val dLat = Math.toRadians(lat2 - lat1)
             val dLng = Math.toRadians(lng2 - lng1)
             val a = sin(dLat / 2) * sin(dLat / 2) +
-                    cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
-                    sin(dLng / 2) * sin(dLng / 2)
-            val c = 2 * atan2(sqrt(a), sqrt(1 - a))
-            return r * c
+                cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
+                sin(dLng / 2) * sin(dLng / 2)
+            return r * 2 * atan2(sqrt(a), sqrt(1 - a))
         }
     }
 }
