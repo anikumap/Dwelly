@@ -17,10 +17,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -248,9 +250,12 @@ private fun LandlordDashboardContent(
 ) {
     Column(modifier = Modifier.padding(16.dp)) {
         Row(modifier = Modifier.fillMaxWidth()) {
-            Text("Landlord Dashboard")
+            Text("Landlord Dashboard", style = MaterialTheme.typography.headlineSmall)
             Spacer(modifier = Modifier.weight(1f))
-            Button(onClick = onLogout) { Text("Log out") }
+            Button(
+                onClick = onLogout,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer),
+            ) { Text("Log out") }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -267,7 +272,7 @@ private fun LandlordDashboardContent(
 
         vm.message?.let {
             Spacer(modifier = Modifier.height(8.dp))
-            Text("Error: $it")
+            Text("Error: $it", color = MaterialTheme.colorScheme.error)
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -313,24 +318,29 @@ private fun ListingOverviewCard(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            Text("${listing.title} — ${listing.status}")
+            Text("${listing.title} — ${listing.status}", style = MaterialTheme.typography.titleMedium)
             Text("${listing.address} • Rent: ₹${listing.rent.toInt()}/mo • Type: ${listing.propertyType}")
 
             Spacer(modifier = Modifier.height(4.dp))
-            Text("Stats: ${overview.stats.views} views • ${overview.stats.saves} saves • ${overview.stats.enquiries} enquiries")
+            Text(
+                "Stats: ${overview.stats.views} views • ${overview.stats.saves} saves • ${overview.stats.enquiries} enquiries",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
             Spacer(modifier = Modifier.height(4.dp))
             Text("Completeness score: ${overview.completeness.score}%")
             LinearProgressIndicator(
                 progress = { overview.completeness.score / 100f },
                 modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.tertiary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant,
             )
 
             if (overview.completeness.suggestions.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text("Suggestions:")
                 overview.completeness.suggestions.forEach { suggestion ->
-                    Text("• $suggestion")
+                    Text("• $suggestion", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 
@@ -364,7 +374,11 @@ private fun ListingOverviewCard(
                 Row(modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton(onClick = onEdit, enabled = enabled) { Text("Edit") }
                     Spacer(modifier = Modifier.width(4.dp))
-                    TextButton(onClick = { confirmDelete = true }, enabled = enabled) { Text("Delete") }
+                    TextButton(
+                        onClick = { confirmDelete = true },
+                        enabled = enabled,
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.tertiary),
+                    ) { Text("Delete") }
                 }
 
                 // Delete can't be undone (DELETED has no way back in LOGIC §2), so ask first.
@@ -374,10 +388,13 @@ private fun ListingOverviewCard(
                         title = { Text("Delete listing?") },
                         text = { Text("\"${listing.title}\" will be removed for good. This can't be undone.") },
                         confirmButton = {
-                            TextButton(onClick = {
-                                confirmDelete = false
-                                onDelete()
-                            }) { Text("Delete") }
+                            TextButton(
+                                onClick = {
+                                    confirmDelete = false
+                                    onDelete()
+                                },
+                                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.tertiary),
+                            ) { Text("Delete") }
                         },
                         dismissButton = {
                             TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
@@ -453,7 +470,7 @@ private fun ListingFormScreen(
 
     LazyColumn(modifier = Modifier.padding(16.dp)) {
         item {
-            Text(if (isEdit) "Edit Listing" else "Create Listing")
+            Text(if (isEdit) "Edit Listing" else "Create Listing", style = MaterialTheme.typography.headlineSmall)
             Spacer(modifier = Modifier.height(8.dp))
 
             TextField(
@@ -493,7 +510,7 @@ private fun ListingFormScreen(
                 )
             }
             TextButton(onClick = requestCurrentLocation, enabled = !busy) { Text("Use my current location") }
-            locationProblem?.let { Text(it) }
+            locationProblem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
             Row(modifier = Modifier.fillMaxWidth()) {
                 TextField(
@@ -535,7 +552,7 @@ private fun ListingFormScreen(
             )
 
             Spacer(modifier = Modifier.height(8.dp))
-            Text("Property Type *")
+            Text("Property Type *", style = MaterialTheme.typography.titleSmall)
             PropertyType.entries.forEach { pt ->
                 Row {
                     RadioButton(selected = propertyType == pt, onClick = { propertyType = pt })
@@ -584,7 +601,7 @@ private fun ListingFormScreen(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-            Text("Furnishing")
+            Text("Furnishing", style = MaterialTheme.typography.titleSmall)
             Row {
                 RadioButton(selected = furnishing == null, onClick = { furnishing = null })
                 Text("Not specified")
@@ -614,7 +631,7 @@ private fun ListingFormScreen(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-            Text("Preferred Tenant")
+            Text("Preferred Tenant", style = MaterialTheme.typography.titleSmall)
             Row {
                 RadioButton(selected = preferredTenant == null, onClick = { preferredTenant = null })
                 Text("Any")
@@ -627,7 +644,7 @@ private fun ListingFormScreen(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-            Text("Amenities")
+            Text("Amenities", style = MaterialTheme.typography.titleSmall)
             Amenity.entries.forEach { amenity ->
                 Row {
                     Checkbox(
@@ -641,7 +658,7 @@ private fun ListingFormScreen(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-            Text("House Rules & Preferences")
+            Text("House Rules & Preferences", style = MaterialTheme.typography.titleSmall)
             HouseRule.entries.forEach { rule ->
                 Row {
                     Checkbox(
@@ -655,7 +672,7 @@ private fun ListingFormScreen(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-            Text("Photos")
+            Text("Photos", style = MaterialTheme.typography.titleSmall)
             if (existingPhotos.isNotEmpty()) {
                 Text("Saved:")
                 PhotoRow(existingPhotos.map { it.url }, size = 90)
@@ -693,7 +710,7 @@ private fun ListingFormScreen(
 
             (photoError ?: errorMessage)?.let {
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Error: $it")
+                Text("Error: $it", color = MaterialTheme.colorScheme.error)
             }
 
             Spacer(modifier = Modifier.height(16.dp))

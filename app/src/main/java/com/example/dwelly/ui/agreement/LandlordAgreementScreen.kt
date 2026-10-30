@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -84,7 +85,7 @@ fun LandlordAgreementScreen(dwelly: DwellyService, listingId: String, onBack: ()
     LazyColumn(modifier = Modifier.padding(16.dp)) {
         item {
             Row(modifier = Modifier.fillMaxWidth()) {
-                Text("Rental agreement")
+                Text("Rental agreement", style = MaterialTheme.typography.headlineSmall)
                 Spacer(modifier = Modifier.weight(1f))
                 OutlinedButton(onClick = onBack) { Text("Back") }
             }
@@ -123,7 +124,7 @@ private fun AgreementBody(
     onSend: () -> Unit,
     onSign: () -> Unit,
 ) {
-    Text("Status: ${ag.status}")
+    Text("Status: ${ag.status}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.tertiary)
     Text("Landlord signed: ${ag.landlordSignedAt ?: "not yet"}")
     Text("Tenant signed: ${ag.tenantSignedAt ?: "not yet"}")
     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))

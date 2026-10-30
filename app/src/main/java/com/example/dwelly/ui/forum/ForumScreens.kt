@@ -3,10 +3,13 @@ package com.example.dwelly.ui.forum
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -15,7 +18,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -48,14 +53,14 @@ class ThreadListViewModel(private val dwelly: DwellyService) : ViewModel() {
 @Composable
 fun ThreadListScreen(dwelly: DwellyService, onOpenThread: (threadId: String, title: String) -> Unit) {
     val vm = viewModel { ThreadListViewModel(dwelly) }
-    Column {
-        Text("Community forum")
+    Column(Modifier.padding(16.dp)) {
+        Text("Community forum", style = MaterialTheme.typography.titleLarge)
         Button(onClick = vm::load) { Text("Refresh") }
         vm.message?.let { Text(it) }
         LazyColumn {
             items(vm.threads, key = { it.threadId }) { thread ->
                 val title = thread.listingTitle ?: "General"
-                TextButton(onClick = { onOpenThread(thread.threadId, title) }) { Text(title) }
+                TextButton(onClick = { onOpenThread(thread.threadId, title) }) { Text(title, style = MaterialTheme.typography.titleMedium) }
             }
         }
     }
@@ -116,17 +121,17 @@ fun ThreadScreen(dwelly: DwellyService, threadId: String, title: String, onBack:
     var text by rememberSaveable { mutableStateOf("") }
     val names = vm.posts.associate { (post, _) -> post.postId to post.authorName }
 
-    Column(Modifier.fillMaxSize()) {
-        Row {
+    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) { Text("Back") }
-            Text(title)
+            Text(title, style = MaterialTheme.typography.titleLarge)
         }
         vm.message?.let { Text(it) }
         LazyColumn(Modifier.weight(1f)) {
             items(vm.posts, key = { it.first.postId }) { (post, _) ->
                 Column {
-                    post.parentPostId?.let { Text("Reply to ${names[it] ?: "a removed post"}") }
-                    Text(post.authorName)
+                    post.parentPostId?.let { Text("Reply to ${names[it] ?: "a removed post"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    Text(post.authorName, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.secondary)
                     Text(post.body)
                     if (post.reactions.isNotEmpty()) {
                         Text(post.reactions.entries.joinToString { "${it.key} ${it.value}" })
@@ -134,7 +139,10 @@ fun ThreadScreen(dwelly: DwellyService, threadId: String, title: String, onBack:
                     Row {
                         TextButton(onClick = { vm.like(post) }) { Text("Like") }
                         TextButton(onClick = { vm.replyTo = post }) { Text("Reply") }
-                        TextButton(onClick = { vm.report(post) }) { Text("Report") }
+                        TextButton(
+                            onClick = { vm.report(post) },
+                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.tertiary),
+                        ) { Text("Report") }
                     }
                     HorizontalDivider()
                 }

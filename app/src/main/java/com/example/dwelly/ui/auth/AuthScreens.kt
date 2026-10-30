@@ -1,8 +1,12 @@
 package com.example.dwelly.ui.auth
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -12,7 +16,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -57,18 +64,19 @@ fun LoginScreen(dwelly: DwellyService, startupError: String?, onRegister: () -> 
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
 
-    Column {
-        Text("Dwelly")
-        TextField(value = email, onValueChange = { email = it }, label = { Text("Email") })
+    Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Dwelly", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.tertiary)
+        TextField(value = email, onValueChange = { email = it }, label = { Text("Email") }, modifier = Modifier.fillMaxWidth())
         TextField(
             value = password,
             onValueChange = { password = it },
             label = { Text("Password") },
             visualTransformation = PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth(),
         )
         Button(onClick = { vm.login(email, password) }, enabled = !vm.busy) { Text("Log in") }
         TextButton(onClick = onRegister) { Text("Register") }
-        (vm.message ?: startupError)?.let { Text(it) }
+        (vm.message ?: startupError)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }
 }
 
@@ -81,20 +89,21 @@ fun RegisterScreen(dwelly: DwellyService, onBack: () -> Unit) {
     var password by rememberSaveable { mutableStateOf("") }
     var role by rememberSaveable { mutableStateOf(Role.TENANT) }
 
-    Column {
-        Text("Register")
-        TextField(value = name, onValueChange = { name = it }, label = { Text("Name") })
-        TextField(value = email, onValueChange = { email = it }, label = { Text("Email") })
-        TextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone") })
+    Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Register", style = MaterialTheme.typography.headlineSmall)
+        TextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
+        TextField(value = email, onValueChange = { email = it }, label = { Text("Email") }, modifier = Modifier.fillMaxWidth())
+        TextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone") }, modifier = Modifier.fillMaxWidth())
         TextField(
             value = password,
             onValueChange = { password = it },
             label = { Text("Password") },
             visualTransformation = PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth(),
         )
-        Text("I am a")
+        Text("I am a", style = MaterialTheme.typography.titleSmall)
         for (option in listOf(Role.TENANT, Role.LANDLORD)) {
-            Row {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 RadioButton(selected = role == option, onClick = { role = option })
                 Text(if (option == Role.TENANT) "Tenant" else "Landlord")
             }
@@ -104,6 +113,6 @@ fun RegisterScreen(dwelly: DwellyService, onBack: () -> Unit) {
             enabled = !vm.busy && name.isNotBlank() && email.isNotBlank() && password.isNotEmpty(),
         ) { Text("Register") }
         TextButton(onClick = onBack) { Text("Back to log in") }
-        vm.message?.let { Text(it) }
+        vm.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }
 }

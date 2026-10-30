@@ -2,7 +2,10 @@ package com.example.dwelly.ui.navigation
 
 import android.net.Uri
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
@@ -17,6 +20,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -148,10 +152,20 @@ private fun TenantDashboard(
     Column {
         PrimaryTabRow(selectedTabIndex = tab.ordinal) {
             TenantTab.entries.forEach {
-                Tab(selected = tab == it, onClick = { tab = it }, text = { Text(it.label) })
+                Tab(
+                    selected = tab == it,
+                    onClick = { tab = it },
+                    text = { Text(it.label, style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false) },
+                    selectedContentColor = MaterialTheme.colorScheme.tertiary,
+                    unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
-        Button(onClick = onLogout) { Text("Log out") }
+        Button(
+            onClick = onLogout,
+            modifier = Modifier.padding(horizontal = 16.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer),
+        ) { Text("Log out") }
         when (tab) {
             TenantTab.HOME -> TenantHomeScreen(
                 dwelly = dwelly,

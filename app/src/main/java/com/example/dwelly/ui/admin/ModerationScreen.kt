@@ -1,16 +1,22 @@
 package com.example.dwelly.ui.admin
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -49,22 +55,28 @@ class ModerationViewModel(private val dwelly: DwellyService) : ViewModel() {
 @Composable
 fun ModerationScreen(dwelly: DwellyService, onLogout: () -> Unit) {
     val vm = viewModel { ModerationViewModel(dwelly) }
-    Column {
-        Text("Reported posts")
-        Row {
+    Column(Modifier.padding(16.dp)) {
+        Text("Reported posts", style = MaterialTheme.typography.headlineSmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = vm::load) { Text("Refresh") }
-            Button(onClick = onLogout) { Text("Log out") }
+            Button(
+                onClick = onLogout,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer),
+            ) { Text("Log out") }
         }
         vm.message?.let { Text(it) }
         if (vm.reported.isEmpty() && vm.message == null) Text("No reported posts")
         LazyColumn {
             items(vm.reported, key = { it.postId }) { post ->
                 Column {
-                    Text("Thread: ${post.listingTitle ?: "General"}")
-                    Text("Author: ${post.authorName}")
+                    Text("Thread: ${post.listingTitle ?: "General"}", style = MaterialTheme.typography.titleMedium)
+                    Text("Author: ${post.authorName}", color = MaterialTheme.colorScheme.secondary)
                     Text(post.body)
-                    Text("Reports: ${post.reportCount}")
-                    Button(onClick = { vm.remove(post.postId) }) { Text("Remove") }
+                    Text("Reports: ${post.reportCount}", color = MaterialTheme.colorScheme.tertiary)
+                    Button(
+                        onClick = { vm.remove(post.postId) },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary, contentColor = MaterialTheme.colorScheme.onTertiary),
+                    ) { Text("Remove") }
                     HorizontalDivider()
                 }
             }
