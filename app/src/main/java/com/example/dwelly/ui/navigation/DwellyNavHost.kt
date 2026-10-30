@@ -2,7 +2,12 @@ package com.example.dwelly.ui.navigation
 
 import android.net.Uri
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
@@ -16,7 +21,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -130,7 +137,7 @@ fun DwellyNavHost(dwelly: DwellyService, modifier: Modifier = Modifier) {
     }
 }
 
-private enum class TenantTab(val label: String) { HOME("Home"), DISCOVERY("Discover"), FORUM("Forum"), AGREEMENT("Agreement") }
+private enum class TenantTab(val label: String) { HOME("Home"), DISCOVERY("Discover"), FORUM("Forum"), AGREEMENT("Lease") }
 
 /**
  * Tenant dashboard. Discovery and Forum are the same for RESIDENT and SEEKER;
@@ -146,12 +153,27 @@ private fun TenantDashboard(
     // A listing opened from Home is shown on the Discover tab.
     var selectedListingId by rememberSaveable { mutableStateOf<String?>(null) }
     Column {
-        PrimaryTabRow(selectedTabIndex = tab.ordinal) {
-            TenantTab.entries.forEach {
-                Tab(selected = tab == it, onClick = { tab = it }, text = { Text(it.label) })
+        // Log out sits at the end of the tab row instead of on a line of its own. To fit four tabs
+        // and the button at phone width, the labels are labelMedium and the agreement tab is "Lease".
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            PrimaryTabRow(selectedTabIndex = tab.ordinal, modifier = Modifier.weight(1f)) {
+                TenantTab.entries.forEach {
+                    Tab(
+                        selected = tab == it,
+                        onClick = { tab = it },
+                        text = { Text(it.label, style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false) },
+                        selectedContentColor = MaterialTheme.colorScheme.tertiary,
+                        unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
+            Button(
+                onClick = onLogout,
+                modifier = Modifier.padding(start = 4.dp, end = 8.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer),
+                contentPadding = PaddingValues(horizontal = 12.dp),
+            ) { Text("Log out", style = MaterialTheme.typography.labelMedium) }
         }
-        Button(onClick = onLogout) { Text("Log out") }
         when (tab) {
             TenantTab.HOME -> TenantHomeScreen(
                 dwelly = dwelly,

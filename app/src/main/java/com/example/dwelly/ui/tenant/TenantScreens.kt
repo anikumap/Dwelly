@@ -8,6 +8,7 @@ import android.graphics.pdf.PdfDocument
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -85,7 +86,7 @@ fun TenantHomeScreen(dwelly: DwellyService, onOpenListingDetail: (String) -> Uni
     val tenant = user as? Tenant
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Home")
+        Text("Home", style = MaterialTheme.typography.headlineSmall)
         tenant?.location?.let {
             Text("Location: ${it.label}")
         } ?: Text("No location set (Set in Discover tab)")
@@ -96,17 +97,17 @@ fun TenantHomeScreen(dwelly: DwellyService, onOpenListingDetail: (String) -> Uni
 
         when (val home = vm.homeData) {
             is TenantHome.Resident -> {
-                Text("Your Rented Property:")
+                Text("Your Rented Property:", style = MaterialTheme.typography.titleSmall)
                 Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                     Column(Modifier.padding(16.dp)) {
-                        Text(home.property.listing.title)
+                        Text(home.property.listing.title, style = MaterialTheme.typography.titleMedium)
                         Text(home.property.listing.address)
                         Text("Rent: INR ${home.property.listing.rent}/mo")
                     }
                 }
             }
             is TenantHome.Seeker -> {
-                Text("Recently Viewed")
+                Text("Recently Viewed", style = MaterialTheme.typography.titleSmall)
                 if (home.recentlyViewed.isEmpty()) {
                     Text("No recently viewed listings.")
                 } else {
@@ -120,7 +121,7 @@ fun TenantHomeScreen(dwelly: DwellyService, onOpenListingDetail: (String) -> Uni
                 }
 
                 Spacer(Modifier.height(8.dp))
-                Text("Popular Listings")
+                Text("Popular Listings", style = MaterialTheme.typography.titleSmall)
                 if (home.popular.isEmpty()) {
                     Text("No popular listings available.")
                 } else {
@@ -252,7 +253,7 @@ fun TenantDiscoveryScreen(dwelly: DwellyService, selectedListingId: String? = nu
     // One scrolling list, so a long listing detail never pushes the feed off screen.
     LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
         item {
-            Text("Discover")
+            Text("Discover", style = MaterialTheme.typography.headlineSmall)
             if (location != null) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("Location: ${location.label}", Modifier.weight(1f))
@@ -320,7 +321,7 @@ fun TenantDiscoveryScreen(dwelly: DwellyService, selectedListingId: String? = nu
             vm.message?.let { Text(it) }
 
             // One option per line: four on a row didn't fit a phone and hid NEAREST.
-            Text("Sort by")
+            Text("Sort by", style = MaterialTheme.typography.titleSmall)
             SortOrder.entries.forEach { order ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(
@@ -392,7 +393,7 @@ fun TenantDiscoveryScreen(dwelly: DwellyService, selectedListingId: String? = nu
         items(vm.feed, key = { it.listingId ?: it.title }) { listing ->
             Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                 Column(Modifier.padding(12.dp)) {
-                    Text(listing.title)
+                    Text(listing.title, style = MaterialTheme.typography.titleMedium)
                     Text("${listing.propertyType.name} - INR ${listing.rent.toInt()}/mo")
                     Text(listing.address)
                     TextButton(onClick = { listing.listingId?.let { vm.loadDetail(it) } }) {
@@ -417,7 +418,7 @@ private fun sortLabel(order: SortOrder) = when (order) {
 @Composable
 private fun ListingDetailBody(detail: ListingDetail) {
     val l = detail.listing
-    Text(l.title)
+    Text(l.title, style = MaterialTheme.typography.titleLarge)
     Text("INR ${l.rent.toInt()}/mo - ${l.propertyType.name}")
     Text("Address: ${l.address}")
     l.description?.let { Text("Description: $it") }
@@ -497,9 +498,9 @@ fun TenantAgreementScreen(dwelly: DwellyService) {
 
     LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
         item {
-            Text("Rental Agreements")
+            Text("Rental Agreements", style = MaterialTheme.typography.headlineSmall)
             vm.message?.let { Text(it) }
-            pdfError?.let { Text(it) }
+            pdfError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (vm.agreements.isEmpty()) {
                 Text("No agreement yet. Your landlord's agreement appears here once they send it.")
             }
@@ -512,8 +513,8 @@ fun TenantAgreementScreen(dwelly: DwellyService) {
         items(vm.agreements, key = { it.agreementId }) { ag ->
             Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 Column(Modifier.padding(16.dp)) {
-                    ag.terms["property"]?.let { Text(it) }
-                    Text("Status: ${ag.status.name}")
+                    ag.terms["property"]?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
+                    Text("Status: ${ag.status.name}", color = MaterialTheme.colorScheme.tertiary)
                     Text("Landlord Signed: ${ag.landlordSignedAt ?: "Pending"}")
                     Text("Tenant Signed: ${ag.tenantSignedAt ?: "Pending"}")
 
