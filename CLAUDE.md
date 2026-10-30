@@ -48,7 +48,7 @@ Run these from this directory. On PowerShell use `.\gradlew.bat`; in Git Bash us
 
 If `java` is not on PATH, set `JAVA_HOME` to Android Studio's bundled JDK (`C:\Program Files\Android\Android Studio\jbr`) before running Gradle.
 
-The app reads `supabase.url` and `supabase.anonKey` from `local.properties` (not checked in) into `BuildConfig`. Without them it builds, but every server call fails with a "Supabase is not configured" message. Never put the service-role key in the app.
+The app reads `supabase.url` and `supabase.anonKey` from `local.properties` (not checked in) into `BuildConfig`. Without them, it builds, but every server call fails with a "Supabase is not configured" message. Never put the service-role key in the app.
 
 ## Build setup
 
