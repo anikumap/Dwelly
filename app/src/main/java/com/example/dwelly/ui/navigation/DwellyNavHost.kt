@@ -29,6 +29,9 @@ import com.example.dwelly.ui.auth.LoginScreen
 import com.example.dwelly.ui.auth.RegisterScreen
 import com.example.dwelly.ui.forum.ThreadListScreen
 import com.example.dwelly.ui.forum.ThreadScreen
+import com.example.dwelly.ui.tenant.TenantAgreementScreen
+import com.example.dwelly.ui.tenant.TenantDiscoveryScreen
+import com.example.dwelly.ui.tenant.TenantHomeScreen
 import kotlinx.coroutines.launch
 
 private object Routes {
@@ -131,6 +134,8 @@ private fun TenantDashboard(
     onLogout: () -> Unit,
 ) {
     var tab by rememberSaveable { mutableStateOf(TenantTab.HOME) }
+    var selectedListingId by rememberSaveable { mutableStateOf<String?>(null) }
+
     Column {
         PrimaryTabRow(selectedTabIndex = tab.ordinal) {
             TenantTab.entries.forEach {
@@ -139,10 +144,19 @@ private fun TenantDashboard(
         }
         Button(onClick = onLogout) { Text("Log out") }
         when (tab) {
-            TenantTab.HOME -> Text("Tenant Home (Person C)")
-            TenantTab.DISCOVERY -> Text("Discovery (Person C)")
+            TenantTab.HOME -> TenantHomeScreen(
+                dwelly = dwelly,
+                onOpenListingDetail = { listingId ->
+                    selectedListingId = listingId
+                    tab = TenantTab.DISCOVERY
+                },
+            )
+            TenantTab.DISCOVERY -> TenantDiscoveryScreen(
+                dwelly = dwelly,
+                selectedListingId = selectedListingId,
+            )
             TenantTab.FORUM -> ThreadListScreen(dwelly, onOpenThread)
-            TenantTab.AGREEMENT -> Text("Agreement (Person C)")
+            TenantTab.AGREEMENT -> TenantAgreementScreen(dwelly = dwelly)
         }
     }
 }
