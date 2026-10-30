@@ -3,6 +3,7 @@ package com.example.dwelly.service
 import com.example.dwelly.data.AgreementApi
 import com.example.dwelly.data.DiscoveryApi
 import com.example.dwelly.data.serverCall
+import com.example.dwelly.model.AgreementStatus
 import com.example.dwelly.model.DwellyError
 import com.example.dwelly.model.FeedFilter
 import com.example.dwelly.model.Listing
@@ -83,7 +84,8 @@ class DiscoveryService(
     suspend fun getHome(): Result<TenantHome> {
         val tenant = currentTenant() ?: return Result.failure(DwellyError.AccessDenied())
         return serverCall {
-            val agreement = agreementApi.getTenantAgreement(tenant.userId)
+            val agreements = agreementApi.getTenantAgreements(tenant.userId)
+            val agreement = agreements.firstOrNull { it.status == AgreementStatus.SIGNED } ?: agreements.firstOrNull()
             if (agreement != null) {
                 // Opening Home isn't viewing a listing, so this doesn't record a VIEW.
                 val property = visibleListing(agreement.listingId)

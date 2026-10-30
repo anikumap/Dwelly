@@ -41,11 +41,14 @@ class AgreementService(
         return serverCall { agreementApi.getAgreementByListing(listingId) }
     }
 
-    /** The signed-in tenant's SENT or SIGNED agreement, if any (LOGIC §4.5). */
-    suspend fun getMyAgreement(): Result<Agreement?> {
+    /**
+     * The signed-in tenant's SENT and SIGNED agreements (LOGIC §4.5), any still waiting for
+     * their signature first. A tenant can be named on more than one.
+     */
+    suspend fun getMyAgreements(): Result<List<Agreement>> {
         val user = currentUser() ?: return Result.failure(DwellyError.AccessDenied())
         if (user.role != Role.TENANT) return Result.failure(DwellyError.AccessDenied())
-        return serverCall { agreementApi.getTenantAgreement(user.userId) }
+        return serverCall { agreementApi.getTenantAgreements(user.userId) }
     }
 
     /** Lets a landlord name the tenant by email when drafting. */

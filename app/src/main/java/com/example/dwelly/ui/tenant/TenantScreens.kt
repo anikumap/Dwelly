@@ -5,6 +5,10 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -49,6 +53,9 @@ import com.example.dwelly.model.SortOrder
 import com.example.dwelly.model.Tenant
 import com.example.dwelly.model.TenantHome
 import com.example.dwelly.service.DwellyService
+import com.example.dwelly.ui.location.CurrentLocationResult
+import com.example.dwelly.ui.location.problem
+import com.example.dwelly.ui.location.rememberCurrentLocationRequest
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -186,6 +193,16 @@ class TenantDiscoveryViewModel(private val dwelly: DwellyService) : ViewModel() 
         }
     }
 
+    /** Saves the device's location as the tenant's location; with [sortNearest], sorts nearest first. */
+    fun useCurrentLocation(lat: Double, lng: Double, sortNearest: Boolean) {
+        if (sortNearest) sortOrder = SortOrder.NEAREST
+        setLocation(CURRENT_LOCATION_LABEL, lat, lng)
+    }
+
+    fun showMessage(text: String) {
+        message = text
+    }
+
     fun setLocation(label: String, lat: Double, lng: Double) {
         viewModelScope.launch {
             dwelly.setLocation(Location(label, lat, lng))
@@ -203,7 +220,10 @@ fun TenantDiscoveryScreen(dwelly: DwellyService, selectedListingId: String? = nu
     val vm = viewModel { TenantDiscoveryViewModel(dwelly) }
     val user by dwelly.currentUser.collectAsState()
     val tenant = user as? Tenant
+    val location = tenant?.location
 
+    // LOGIC §1: the location can be changed at any time, so the form also opens on request.
+    var editingLocation by rememberSaveable { mutableStateOf(false) }
     var locationInput by rememberSaveable { mutableStateOf("") }
     var latInput by rememberSaveable { mutableStateOf("") }
     var lngInput by rememberSaveable { mutableStateOf("") }
@@ -212,146 +232,171 @@ fun TenantDiscoveryScreen(dwelly: DwellyService, selectedListingId: String? = nu
     var enquiryMessage by rememberSaveable { mutableStateOf("") }
     var showEnquiryDialog by rememberSaveable { mutableStateOf(false) }
 
+    // Whether the pending device-location request should also switch the sort to NEAREST.
+    var sortNearestAfterLocating by remember { mutableStateOf(false) }
+    val requestCurrentLocation = rememberCurrentLocationRequest { result ->
+        if (result is CurrentLocationResult.Found) {
+            vm.useCurrentLocation(result.lat, result.lng, sortNearest = sortNearestAfterLocating)
+            editingLocation = false
+        } else {
+            result.problem()?.let(vm::showMessage)
+        }
+    }
+
     LaunchedEffect(selectedListingId) {
         if (selectedListingId != null) {
             vm.loadDetail(selectedListingId)
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+    // One scrolling list, so a long listing detail never pushes the feed off screen.
+    LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
+        item {
             Text("Discover")
-            tenant?.location?.let {
-                Text("Loc: ${it.label}")
-            }
-        }
-
-        if (vm.promptLocationNeeded || tenant?.location == null) {
-            Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                Column(Modifier.padding(12.dp)) {
-                    Text("Set Location to view feed:")
-                    OutlinedTextField(
-                        value = locationInput,
-                        onValueChange = { locationInput = it },
-                        label = { Text("Location Name") },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Row(Modifier.fillMaxWidth()) {
-                        OutlinedTextField(
-                            value = latInput,
-                            onValueChange = { latInput = it },
-                            label = { Text("Latitude") },
-                            isError = latInput.isNotEmpty() && lat == null,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Spacer(Modifier.padding(horizontal = 4.dp))
-                        OutlinedTextField(
-                            value = lngInput,
-                            onValueChange = { lngInput = it },
-                            label = { Text("Longitude") },
-                            isError = lngInput.isNotEmpty() && lng == null,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    Button(
-                        onClick = { vm.setLocation(locationInput.trim(), requireNotNull(lat), requireNotNull(lng)) },
-                        enabled = locationInput.isNotBlank() && lat != null && lng != null,
-                        modifier = Modifier.padding(top = 8.dp),
-                    ) {
-                        Text("Set Location")
+            if (location != null) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Location: ${location.label}", Modifier.weight(1f))
+                    if (!editingLocation) {
+                        TextButton(onClick = {
+                            locationInput = location.label
+                            latInput = location.lat.toString()
+                            lngInput = location.lng.toString()
+                            editingLocation = true
+                        }) { Text("Change location") }
                     }
                 }
             }
-        }
 
-        vm.message?.let { Text(it) }
-
-        // Sort choices
-        Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) {
-            SortOrder.entries.forEach { order ->
-                RadioButton(
-                    selected = vm.sortOrder == order,
-                    onClick = {
-                        vm.sortOrder = order
-                        vm.loadFeed()
-                    },
-                )
-                Text(order.name, modifier = Modifier.align(Alignment.CenterVertically))
+            if (vm.promptLocationNeeded || location == null || editingLocation) {
+                Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(if (location == null) "Set your location to see the feed:" else "Change your location:")
+                        OutlinedTextField(
+                            value = locationInput,
+                            onValueChange = { locationInput = it },
+                            label = { Text("Location name") },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Row(Modifier.fillMaxWidth()) {
+                            OutlinedTextField(
+                                value = latInput,
+                                onValueChange = { latInput = it },
+                                label = { Text("Latitude") },
+                                isError = latInput.isNotEmpty() && lat == null,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Spacer(Modifier.padding(horizontal = 4.dp))
+                            OutlinedTextField(
+                                value = lngInput,
+                                onValueChange = { lngInput = it },
+                                label = { Text("Longitude") },
+                                isError = lngInput.isNotEmpty() && lng == null,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        Row(Modifier.padding(top = 8.dp)) {
+                            Button(
+                                onClick = {
+                                    vm.setLocation(locationInput.trim(), requireNotNull(lat), requireNotNull(lng))
+                                    editingLocation = false
+                                },
+                                enabled = locationInput.isNotBlank() && lat != null && lng != null,
+                            ) {
+                                Text("Save location")
+                            }
+                            if (editingLocation) {
+                                Spacer(Modifier.padding(horizontal = 4.dp))
+                                TextButton(onClick = { editingLocation = false }) { Text("Cancel") }
+                            }
+                        }
+                        TextButton(onClick = {
+                            sortNearestAfterLocating = false
+                            requestCurrentLocation()
+                        }) { Text("Use my current location") }
+                    }
+                }
             }
+
+            vm.message?.let { Text(it) }
+
+            // One option per line: four on a row didn't fit a phone and hid NEAREST.
+            Text("Sort by")
+            SortOrder.entries.forEach { order ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(
+                        selected = vm.sortOrder == order,
+                        onClick = {
+                            vm.sortOrder = order
+                            vm.loadFeed()
+                        },
+                    )
+                    Text(sortLabel(order))
+                }
+            }
+            TextButton(onClick = {
+                sortNearestAfterLocating = true
+                requestCurrentLocation()
+            }) { Text("Nearest to my current location") }
+
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
         }
 
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        vm.selectedListingDetail?.let { detail ->
+            item {
+                Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                    Column(Modifier.padding(12.dp)) {
+                        ListingDetailBody(detail)
 
-        // Listing Detail View if selected
-        val detail = vm.selectedListingDetail
-        if (detail != null) {
-            Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                Column(Modifier.padding(12.dp)) {
-                    Text(detail.listing.title)
-                    Text("INR ${detail.listing.rent}/mo - ${detail.listing.propertyType.name}")
-                    Text("Address: ${detail.listing.address}")
-                    detail.listing.description?.let { Text("Description: $it") }
+                        Row(Modifier.padding(top = 8.dp)) {
+                            Button(onClick = { detail.listing.listingId?.let { vm.saveListing(it, true) } }) {
+                                Text("Save")
+                            }
+                            Spacer(Modifier.padding(horizontal = 4.dp))
+                            TextButton(onClick = { detail.listing.listingId?.let { vm.saveListing(it, false) } }) {
+                                Text("Unsave")
+                            }
+                        }
+                        Row {
+                            Button(onClick = { showEnquiryDialog = true }) {
+                                Text("Enquire")
+                            }
+                            Spacer(Modifier.padding(horizontal = 4.dp))
+                            TextButton(onClick = { vm.selectedListingDetail = null }) {
+                                Text("Close")
+                            }
+                        }
 
-                    if (detail.photos.isNotEmpty()) {
-                        Text("Photos (${detail.photos.size}):")
-                        LazyColumn(Modifier.height(100.dp)) {
-                            items(detail.photos) { photo ->
-                                AsyncImage(model = photo.url, contentDescription = "Photo")
+                        if (showEnquiryDialog) {
+                            OutlinedTextField(
+                                value = enquiryMessage,
+                                onValueChange = { enquiryMessage = it },
+                                label = { Text("Enquiry message") },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Button(
+                                onClick = {
+                                    detail.listing.listingId?.let { vm.sendEnquiry(it, enquiryMessage) }
+                                    showEnquiryDialog = false
+                                    enquiryMessage = ""
+                                },
+                                enabled = enquiryMessage.isNotBlank(),
+                            ) {
+                                Text("Send Enquiry")
                             }
                         }
                     }
-
-                    Row {
-                        Button(onClick = { detail.listing.listingId?.let { vm.saveListing(it, true) } }) {
-                            Text("Save")
-                        }
-                        Spacer(Modifier.padding(horizontal = 4.dp))
-                        TextButton(onClick = { detail.listing.listingId?.let { vm.saveListing(it, false) } }) {
-                            Text("Unsave")
-                        }
-                        Spacer(Modifier.padding(horizontal = 4.dp))
-                        Button(onClick = { showEnquiryDialog = true }) {
-                            Text("Enquire")
-                        }
-                        Spacer(Modifier.padding(horizontal = 4.dp))
-                        TextButton(onClick = { vm.selectedListingDetail = null }) {
-                            Text("Close")
-                        }
-                    }
                 }
             }
         }
 
-        if (showEnquiryDialog && detail != null) {
-            OutlinedTextField(
-                value = enquiryMessage,
-                onValueChange = { enquiryMessage = it },
-                label = { Text("Enquiry Message") },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Button(
-                onClick = {
-                    detail.listing.listingId?.let { vm.sendEnquiry(it, enquiryMessage) }
-                    showEnquiryDialog = false
-                    enquiryMessage = ""
-                },
-                enabled = enquiryMessage.isNotBlank(),
-            ) {
-                Text("Send Enquiry")
-            }
-        }
-
-        // Feed list
-        LazyColumn(Modifier.weight(1f)) {
-            items(vm.feed, key = { it.listingId ?: it.title }) { listing ->
-                Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text(listing.title)
-                        Text("${listing.propertyType.name} - INR ${listing.rent}")
-                        Text(listing.address)
-                        TextButton(onClick = { listing.listingId?.let { vm.loadDetail(it) } }) {
-                            Text("View Detail")
-                        }
+        items(vm.feed, key = { it.listingId ?: it.title }) { listing ->
+            Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(listing.title)
+                    Text("${listing.propertyType.name} - INR ${listing.rent.toInt()}/mo")
+                    Text(listing.address)
+                    TextButton(onClick = { listing.listingId?.let { vm.loadDetail(it) } }) {
+                        Text("View Detail")
                     }
                 }
             }
@@ -359,8 +404,58 @@ fun TenantDiscoveryScreen(dwelly: DwellyService, selectedListingId: String? = nu
     }
 }
 
+private const val CURRENT_LOCATION_LABEL = "Current location"
+
+private fun sortLabel(order: SortOrder) = when (order) {
+    SortOrder.LATEST -> "Latest"
+    SortOrder.PRICE_LOW_HIGH -> "Price: low to high"
+    SortOrder.PRICE_HIGH_LOW -> "Price: high to low"
+    SortOrder.NEAREST -> "Nearest"
+}
+
+/** LOGIC §4.3 step 18: everything the landlord provided. Fields they left empty are skipped. */
+@Composable
+private fun ListingDetailBody(detail: ListingDetail) {
+    val l = detail.listing
+    Text(l.title)
+    Text("INR ${l.rent.toInt()}/mo - ${l.propertyType.name}")
+    Text("Address: ${l.address}")
+    l.description?.let { Text("Description: $it") }
+    l.deposit?.let { Text("Deposit: INR ${it.toInt()}") }
+    l.maintenance?.let { Text("Maintenance: INR ${it.toInt()}/mo") }
+    l.availableFrom?.let { Text("Available from: $it") }
+    l.leaseMonths?.let { Text("Lease: $it months") }
+    l.bedrooms?.let { Text("Bedrooms: $it") }
+    l.bathrooms?.let { Text("Bathrooms: $it") }
+    l.balconies?.let { Text("Balconies: $it") }
+    l.carpetArea?.let { Text("Carpet area: ${it.toInt()} sqft") }
+    l.floorNo?.let { Text("Floor: $it") }
+    l.furnishing?.let { Text("Furnishing: ${it.name}") }
+    Text("Parking: ${l.parkingTwoWheeler} two-wheeler, ${l.parkingFourWheeler} four-wheeler")
+    l.preferredTenant?.let { Text("Preferred tenant: ${it.name}") }
+    if (l.amenities.isNotEmpty()) Text("Amenities: ${l.amenities.joinToString { it.name }}")
+    if (l.rules.isNotEmpty()) Text("House rules: ${l.rules.joinToString { it.name }}")
+
+    if (detail.photos.isNotEmpty()) {
+        Text("Photos (${detail.photos.size}):")
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        ) {
+            detail.photos.forEach { photo ->
+                AsyncImage(
+                    model = photo.url,
+                    contentDescription = "Property photo",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(120.dp),
+                )
+            }
+        }
+    }
+}
+
 class TenantAgreementViewModel(private val dwelly: DwellyService) : ViewModel() {
-    var agreement by mutableStateOf<Agreement?>(null)
+    var agreements by mutableStateOf<List<Agreement>>(emptyList())
         private set
     var message by mutableStateOf<String?>(null)
         private set
@@ -372,23 +467,23 @@ class TenantAgreementViewModel(private val dwelly: DwellyService) : ViewModel() 
     fun load() {
         viewModelScope.launch {
             if (dwelly.currentUser.value is Tenant) {
-                dwelly.getMyAgreement()
+                dwelly.getMyAgreements()
                     .onSuccess {
-                        agreement = it
-                        message = if (it == null) {
-                            "No active agreement found. If your landlord created an agreement, make sure they clicked 'Send to Tenant'."
-                        } else null
+                        agreements = it
+                        message = null
                     }
                     .onFailure { message = it.message }
             }
         }
     }
 
-    fun sign() {
-        val ag = agreement ?: return
+    fun sign(agreementId: String) {
         viewModelScope.launch {
-            dwelly.signAgreement(ag.agreementId)
-                .onSuccess { agreement = it; message = "Agreement signed!" }
+            dwelly.signAgreement(agreementId)
+                .onSuccess { signed ->
+                    agreements = agreements.map { if (it.agreementId == signed.agreementId) signed else it }
+                    message = "Agreement signed!"
+                }
                 .onFailure { message = it.message }
         }
     }
@@ -400,29 +495,38 @@ fun TenantAgreementScreen(dwelly: DwellyService) {
     val context = LocalContext.current
     var pdfError by remember { mutableStateOf<String?>(null) }
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Rental Agreement")
-        vm.message?.let { Text(it) }
-        pdfError?.let { Text(it) }
+    LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
+        item {
+            Text("Rental Agreements")
+            vm.message?.let { Text(it) }
+            pdfError?.let { Text(it) }
+            if (vm.agreements.isEmpty()) {
+                Text("No agreement yet. Your landlord's agreement appears here once they send it.")
+            }
+            Button(onClick = vm::load, modifier = Modifier.padding(top = 8.dp)) {
+                Text("Refresh")
+            }
+        }
 
-        val ag = vm.agreement
-        if (ag != null) {
+        // A tenant can be named on more than one; any still waiting for their signature come first.
+        items(vm.agreements, key = { it.agreementId }) { ag ->
             Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 Column(Modifier.padding(16.dp)) {
+                    ag.terms["property"]?.let { Text(it) }
                     Text("Status: ${ag.status.name}")
                     Text("Landlord Signed: ${ag.landlordSignedAt ?: "Pending"}")
                     Text("Tenant Signed: ${ag.tenantSignedAt ?: "Pending"}")
 
                     Spacer(Modifier.height(8.dp))
                     Text("Terms:")
-                    ag.terms.forEach { (key, value) ->
+                    ag.terms.toSortedMap().forEach { (key, value) ->
                         Text("$key: $value")
                     }
 
                     Spacer(Modifier.height(12.dp))
                     Row {
                         if (ag.status == com.example.dwelly.model.AgreementStatus.SENT && ag.tenantSignedAt == null) {
-                            Button(onClick = vm::sign) { Text("Sign Agreement") }
+                            Button(onClick = { vm.sign(ag.agreementId) }) { Text("Sign Agreement") }
                             Spacer(Modifier.padding(horizontal = 4.dp))
                         }
                         Button(onClick = {
@@ -432,11 +536,6 @@ fun TenantAgreementScreen(dwelly: DwellyService) {
                         }
                     }
                 }
-            }
-        } else {
-            Text("No active agreement found.")
-            Button(onClick = vm::load, modifier = Modifier.padding(top = 8.dp)) {
-                Text("Refresh")
             }
         }
     }

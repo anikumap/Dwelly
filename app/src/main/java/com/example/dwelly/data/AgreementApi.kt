@@ -5,6 +5,7 @@ import com.example.dwelly.model.AgreementStatus
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.postgrest.query.Order
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.encodeToJsonElement
@@ -17,7 +18,8 @@ interface AgreementApi {
     suspend fun sendAgreement(agreementId: String): Agreement
     suspend fun signAgreement(agreementId: String): Agreement
     suspend fun getAgreementByListing(listingId: String): Agreement?
-    suspend fun getTenantAgreement(tenantId: String): Agreement?
+    /** The tenant's SENT and SIGNED agreements, any still waiting for their signature first. */
+    suspend fun getTenantAgreements(tenantId: String): List<Agreement>
     suspend fun getTenantIdByEmail(email: String): String?
 }
 
@@ -53,13 +55,14 @@ class SupabaseAgreementApi(
             filter { eq("listing_id", listingId) }
         }.decodeSingleOrNull()
 
-    override suspend fun getTenantAgreement(tenantId: String): Agreement? =
+    override suspend fun getTenantAgreements(tenantId: String): List<Agreement> =
         client().from("agreements").select {
             filter {
                 eq("tenant_id", tenantId)
                 isIn("status", listOf(AgreementStatus.SENT.name, AgreementStatus.SIGNED.name))
             }
-        }.decodeList<Agreement>().firstOrNull()
+            order("created_at", Order.DESCENDING)
+        }.decodeList<Agreement>().sortedBy { it.tenantSignedAt != null }
 
     override suspend fun getTenantIdByEmail(email: String): String? =
         client().postgrest.rpc("get_tenant_id_by_email", buildJsonObject {
