@@ -7,7 +7,9 @@ revoke all on public.listings, public.listing_photos, public.listing_stats,
     from anon;
 
 grant select on public.listings to authenticated;
-grant select, insert, update, delete on public.listing_photos to authenticated;
+-- Photos are only ever added (ARCH: "upload photos"); there is no edit or remove-photo operation.
+revoke update, delete on public.listing_photos from authenticated;
+grant select, insert on public.listing_photos to authenticated;
 grant select on public.listing_stats to authenticated;
 grant select on public.enquiries to authenticated;
 grant select on public.listing_views to authenticated;
@@ -50,7 +52,9 @@ create policy listings_select on public.listings
     );
 
 -- RLS: listing_photos -------------------------------------------------------
--- Readable wherever the listing is readable; writable only by the owner
+-- Readable wherever the listing is readable. Insertable only by the owner, only while the
+-- listing is not DELETED (LOGIC §2: edit is allowed in any state except DELETED), and only
+-- for a file the owner uploaded to the listing-photos bucket, so no stock or external images.
 drop policy if exists listing_photos_select on public.listing_photos;
 drop policy if exists listing_photos_insert on public.listing_photos;
 drop policy if exists listing_photos_update on public.listing_photos;
@@ -72,27 +76,10 @@ create policy listing_photos_insert on public.listing_photos
             select 1 from public.listings l
             where l.listing_id = listing_photos.listing_id
               and l.landlord_id = (select auth.uid())
+              and l.status <> 'DELETED'
         )
-    );
-
-create policy listing_photos_update on public.listing_photos
-    for update to authenticated
-    using (
-        exists (
-            select 1 from public.listings l
-            where l.listing_id = listing_photos.listing_id
-              and l.landlord_id = (select auth.uid())
-        )
-    );
-
-create policy listing_photos_delete on public.listing_photos
-    for delete to authenticated
-    using (
-        exists (
-            select 1 from public.listings l
-            where l.listing_id = listing_photos.listing_id
-              and l.landlord_id = (select auth.uid())
-        )
+        and url like '%/storage/v1/object/public/listing-photos/'
+            || (select auth.uid())::text || '/' || listing_id::text || '/%'
     );
 
 -- RLS: listing_stats and enquiries ------------------------------------------
@@ -238,7 +225,8 @@ declare
 begin
     select status into v_status
     from public.listings
-    where listing_id = p_listing_id and landlord_id = auth.uid();
+    where listing_id = p_listing_id and landlord_id = auth.uid()
+    for update;
 
     if not found then
         raise exception 'accessDenied';
@@ -298,7 +286,8 @@ declare
 begin
     select status into v_current_status
     from public.listings
-    where listing_id = p_listing_id and landlord_id = auth.uid();
+    where listing_id = p_listing_id and landlord_id = auth.uid()
+    for update;
 
     if not found then
         raise exception 'accessDenied';
@@ -337,7 +326,6 @@ security definer
 set search_path = ''
 as $$
 declare
-    v_inserted boolean;
     v_rows integer;
 begin
     if auth.uid() is null or public.current_user_role() is distinct from 'TENANT' then

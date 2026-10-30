@@ -9,7 +9,6 @@ import com.example.dwelly.model.ListingStatus
 import com.example.dwelly.model.PropertyType
 import com.example.dwelly.model.StatMetric
 import com.example.dwelly.model.User
-import com.example.dwelly.service.ForumService
 import com.example.dwelly.service.ListingService
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -20,7 +19,6 @@ import org.junit.Test
 class ListingServiceTest {
 
     private lateinit var listingApi: FakeListingApi
-    private lateinit var forumApi: FakeForumApi
     private var currentUser: User? = null
     private lateinit var listingService: ListingService
 
@@ -54,9 +52,7 @@ class ListingServiceTest {
     @Before
     fun setup() {
         listingApi = FakeListingApi()
-        forumApi = FakeForumApi()
-        val forumService = ForumService(forumApi) { currentUser }
-        listingService = ListingService(listingApi, forumService) { currentUser }
+        listingService = ListingService(listingApi) { currentUser }
     }
 
     @Test
@@ -97,6 +93,26 @@ class ListingServiceTest {
         val result = listingService.update(deletedListing)
         assertTrue(result.isFailure)
         assertTrue(result.exceptionOrNull() is DwellyError.RejectChange)
+    }
+
+    @Test
+    fun `photo upload failure fails the create instead of being swallowed`() = runBlocking {
+        currentUser = landlord
+        listingApi.failPhotoUpload = true
+        val result = listingService.create(sampleListing, listOf(byteArrayOf(1, 2, 3)))
+        assertTrue(result.isFailure)
+    }
+
+    @Test
+    fun `completeness is only for the owning landlord`() = runBlocking {
+        listingApi.createListing(sampleListing)
+        currentUser = tenant
+        assertTrue(listingService.getCompleteness("l-100").exceptionOrNull() is DwellyError.AccessDenied)
+        currentUser = landlord.copy(userId = "someone-else")
+        assertTrue(listingService.getCompleteness("l-100").exceptionOrNull() is DwellyError.AccessDenied)
+        currentUser = landlord
+        // Everything but photos is filled: 5 of 6 items.
+        assertEquals(83, listingService.getCompleteness("l-100").getOrThrow().score)
     }
 
     @Test
@@ -172,7 +188,7 @@ class ListingServiceTest {
 
     @Test
     fun `recordStat updates stats for view, save and enquiry`() = runBlocking {
-        currentUser = landlord
+        currentUser = tenant
         listingApi.createListing(sampleListing)
         val id = sampleListing.listingId!!
 

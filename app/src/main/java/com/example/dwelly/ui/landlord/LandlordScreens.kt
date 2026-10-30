@@ -1,18 +1,12 @@
 package com.example.dwelly.ui.landlord
 
-import android.graphics.BitmapFactory
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -20,17 +14,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -42,14 +31,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -78,25 +64,26 @@ class LandlordViewModel(private val dwelly: DwellyService) : ViewModel() {
         load()
     }
 
-    fun load() {
+    fun load() = runBusy { reload() }
+
+    private suspend fun reload() {
+        dwelly.getMyListings()
+            .onSuccess { overviews = it }
+            .onFailure { message = it.message }
+    }
+
+    /** One request at a time: [busy] is set before launching and always cleared afterwards. */
+    private fun runBusy(block: suspend () -> Unit) {
         if (busy) return
+        busy = true
+        message = null
         viewModelScope.launch {
-            busy = true
-            message = null
             try {
-                dwelly.getMyListings()
-                    .onSuccess { overviews = it }
-                    .onFailure { message = it.message }
+                block()
             } finally {
                 busy = false
             }
         }
-    }
-
-    private suspend fun reloadListingsInternal() {
-        dwelly.getMyListings()
-            .onSuccess { overviews = it }
-            .onFailure { message = it.message }
     }
 
     fun clearMessage() {
@@ -111,82 +98,63 @@ class LandlordViewModel(private val dwelly: DwellyService) : ViewModel() {
 
     fun deleteListing(listingId: String) = updateStatus(listingId, ListingStatus.DELETED)
 
-    private fun updateStatus(listingId: String, status: ListingStatus) {
-        if (busy) return
-        busy = true
-        message = null
-        viewModelScope.launch {
-            try {
-                dwelly.setListingStatus(listingId, status)
-                    .onSuccess { reloadListingsInternal() }
-                    .onFailure { message = it.message }
-            } catch (e: Exception) {
-                message = e.message
-            } finally {
-                busy = false
-            }
-        }
+    private fun updateStatus(listingId: String, status: ListingStatus) = runBusy {
+        dwelly.setListingStatus(listingId, status)
+            .onSuccess { reload() }
+            .onFailure { message = it.message }
     }
 
+    /**
+     * Saves the listing first, then uploads the photos one by one. If an upload fails the
+     * listing already exists, so [onPhotosFailed] reopens it for editing instead of leaving the
+     * create form up, where a retry would create a second listing.
+     */
     fun createListing(
         listing: Listing,
         photos: List<ByteArray>,
-        photoUrls: List<String>,
         onDone: () -> Unit,
-    ) {
-        if (busy) return
-        busy = true
-        message = null
-        viewModelScope.launch {
-            try {
-                dwelly.createListing(listing, photos, photoUrls)
-                    .onSuccess {
-                        reloadListingsInternal()
-                        onDone()
-                    }
-                    .onFailure {
-                        message = it.message ?: "Failed to create listing"
-                        android.util.Log.e("Dwelly", "createListing failed", it)
-                    }
-            } finally {
-                busy = false
+        onPhotosFailed: (Listing) -> Unit,
+    ) = runBusy {
+        dwelly.createListing(listing)
+            .onSuccess { created ->
+                val error = uploadPhotos(requireNotNull(created.listingId), photos, firstPosition = 0)
+                reload()
+                if (error == null) {
+                    onDone()
+                } else {
+                    message = error
+                    onPhotosFailed(created)
+                }
             }
-        }
+            .onFailure { message = it.message ?: "Failed to create listing" }
     }
 
     fun updateListing(
         listing: Listing,
-        newPhotos: List<ByteArray> = emptyList(),
-        newPhotoUrls: List<String> = emptyList(),
-        existingPhotoCount: Int = 0,
+        newPhotos: List<ByteArray>,
+        existingPhotos: List<ListingPhoto>,
         onDone: () -> Unit,
-    ) {
-        if (busy) return
-        busy = true
-        message = null
-        viewModelScope.launch {
-            try {
-                dwelly.updateListing(listing)
-                    .onSuccess {
-                        val listingId = requireNotNull(listing.listingId)
-                        var nextPos = existingPhotoCount
-                        newPhotos.forEach { bytes ->
-                            dwelly.uploadPhoto(listingId, bytes, nextPos++)
-                        }
-                        newPhotoUrls.forEach { url ->
-                            dwelly.addPhotoUrl(listingId, url, nextPos++)
-                        }
-                        reloadListingsInternal()
-                        onDone()
-                    }
-                    .onFailure {
-                        message = it.message ?: "Failed to update listing"
-                        android.util.Log.e("Dwelly", "updateListing failed", it)
-                    }
-            } finally {
-                busy = false
+    ) = runBusy {
+        dwelly.updateListing(listing)
+            .onSuccess {
+                val firstPosition = (existingPhotos.maxOfOrNull { it.position } ?: -1) + 1
+                val error = uploadPhotos(requireNotNull(listing.listingId), newPhotos, firstPosition)
+                reload()
+                if (error == null) onDone() else message = error
+            }
+            .onFailure { message = it.message ?: "Failed to update listing" }
+    }
+
+    /** Returns null when every photo uploaded, otherwise the error. Stops at the first failure. */
+    private suspend fun uploadPhotos(listingId: String, photos: List<ByteArray>, firstPosition: Int): String? {
+        photos.forEachIndexed { index, bytes ->
+            val failure = dwelly.uploadPhoto(listingId, bytes, firstPosition + index).exceptionOrNull()
+            if (failure != null) {
+                return "Listing saved, but photo ${index + 1} of ${photos.size} failed to upload " +
+                    "(${failure.message}). The photos before it were saved; add the rest again."
             }
         }
+        return null
     }
 }
 
@@ -227,8 +195,13 @@ fun LandlordScreen(
                 existingPhotos = emptyList(),
                 errorMessage = vm.message,
                 busy = vm.busy,
-                onSave = { listing, photos, urls ->
-                    vm.createListing(listing, photos, urls) { mode = LandlordViewMode.Dashboard }
+                onSave = { listing, photos ->
+                    vm.createListing(
+                        listing = listing,
+                        photos = photos,
+                        onDone = { mode = LandlordViewMode.Dashboard },
+                        onPhotosFailed = { created -> mode = LandlordViewMode.Edit(created) },
+                    )
                 },
                 onCancel = {
                     vm.clearMessage()
@@ -245,12 +218,11 @@ fun LandlordScreen(
                 existingPhotos = existingPhotos,
                 errorMessage = vm.message,
                 busy = vm.busy,
-                onSave = { listing, photos, urls ->
+                onSave = { listing, photos ->
                     vm.updateListing(
                         listing = listing,
                         newPhotos = photos,
-                        newPhotoUrls = urls,
-                        existingPhotoCount = existingPhotos.size,
+                        existingPhotos = existingPhotos,
                     ) { mode = LandlordViewMode.Dashboard }
                 },
                 onCancel = {
@@ -332,26 +304,9 @@ private fun ListingOverviewCard(
     val listing = overview.listing
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp)) {
-            // Photo strip — plain Row + horizontalScroll avoids LazyRow-in-LazyColumn conflicts
             if (overview.photos.isNotEmpty()) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(bottom = 8.dp),
-                ) {
-                    overview.photos.forEach { photo ->
-                        AsyncImage(
-                            model = photo.url,
-                            contentDescription = "Property photo",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .size(100.dp)
-                                .clip(RoundedCornerShape(8.dp)),
-                        )
-                    }
-                }
+                PhotoRow(overview.photos.map { it.url }, size = 100)
+                Spacer(modifier = Modifier.height(8.dp))
             }
 
             Text("${listing.title} — ${listing.status}")
@@ -411,10 +366,10 @@ private fun ListingOverviewCard(
 @Composable
 private fun ListingFormScreen(
     initialListing: Listing?,
-    existingPhotos: List<com.example.dwelly.model.ListingPhoto>,
+    existingPhotos: List<ListingPhoto>,
     errorMessage: String?,
     busy: Boolean,
-    onSave: (Listing, List<ByteArray>, List<String>) -> Unit,
+    onSave: (Listing, List<ByteArray>) -> Unit,
     onCancel: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -423,9 +378,9 @@ private fun ListingFormScreen(
     var title by rememberSaveable { mutableStateOf(initialListing?.title.orEmpty()) }
     var description by rememberSaveable { mutableStateOf(initialListing?.description.orEmpty()) }
     var address by rememberSaveable { mutableStateOf(initialListing?.address.orEmpty()) }
-    var latText by rememberSaveable { mutableStateOf(initialListing?.lat?.toString() ?: "12.9716") }
-    var lngText by rememberSaveable { mutableStateOf(initialListing?.lng?.toString() ?: "77.5946") }
-    var rentText by rememberSaveable { mutableStateOf(initialListing?.rent?.toInt()?.toString() ?: "20000") }
+    var latText by rememberSaveable { mutableStateOf(initialListing?.lat?.toString().orEmpty()) }
+    var lngText by rememberSaveable { mutableStateOf(initialListing?.lng?.toString().orEmpty()) }
+    var rentText by rememberSaveable { mutableStateOf(initialListing?.rent?.toInt()?.toString().orEmpty()) }
     var depositText by rememberSaveable { mutableStateOf(initialListing?.deposit?.toInt()?.toString().orEmpty()) }
     var maintenanceText by rememberSaveable { mutableStateOf(initialListing?.maintenance?.toInt()?.toString().orEmpty()) }
     var availableFrom by rememberSaveable { mutableStateOf(initialListing?.availableFrom.orEmpty()) }
@@ -441,34 +396,24 @@ private fun ListingFormScreen(
     var parkingFourWheelerText by rememberSaveable { mutableStateOf(initialListing?.parkingFourWheeler?.toString() ?: "0") }
     var preferredTenant by rememberSaveable { mutableStateOf(initialListing?.preferredTenant) }
 
-    var selectedAmenities by remember { mutableStateOf(initialListing?.amenities?.toSet() ?: emptySet()) }
-    var selectedRules by remember { mutableStateOf(initialListing?.rules?.toSet() ?: emptySet()) }
+    // Lists rather than sets so rememberSaveable can put them in the saved-state Bundle.
+    var selectedAmenities by rememberSaveable { mutableStateOf(initialListing?.amenities.orEmpty()) }
+    var selectedRules by rememberSaveable { mutableStateOf(initialListing?.rules.orEmpty()) }
 
-    // Real photos: selected byte arrays from device storage and pasted URLs
-    var selectedDevicePhotos by remember { mutableStateOf<List<ByteArray>>(emptyList()) }
-    var photoUrls by remember { mutableStateOf<List<String>>(emptyList()) }
-    var photoUrlInput by rememberSaveable { mutableStateOf("") }
-
-    val MAX_PHOTOS = 10
-    val totalPhotos = existingPhotos.size + selectedDevicePhotos.size + photoUrls.size
-    val atLimit = totalPhotos >= MAX_PHOTOS
+    // Picked photos are kept as content URI strings so they survive rotation; the bytes are
+    // read only when the landlord saves.
+    var pickedPhotos by rememberSaveable { mutableStateOf(listOf<String>()) }
+    var photoError by remember { mutableStateOf<String?>(null) }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents()
-    ) { uris: List<Uri> ->
-        val remaining = MAX_PHOTOS - totalPhotos
-        val toAdd = uris.take(remaining.coerceAtLeast(0))
-        val newBytes = toAdd.mapNotNull { uri ->
-            try {
-                context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-            } catch (_: Exception) {
-                null
-            }
-        }
-        if (newBytes.isNotEmpty()) {
-            selectedDevicePhotos = selectedDevicePhotos + newBytes
-        }
+    ) { uris ->
+        pickedPhotos = (pickedPhotos + uris.map { it.toString() }).distinct()
     }
+
+    val lat = latText.toDoubleOrNull()?.takeIf { it in -90.0..90.0 }
+    val lng = lngText.toDoubleOrNull()?.takeIf { it in -180.0..180.0 }
+    val rent = rentText.toDoubleOrNull()?.takeIf { it > 0 }
 
     LazyColumn(modifier = Modifier.padding(16.dp)) {
         item {
@@ -498,14 +443,16 @@ private fun ListingFormScreen(
                 TextField(
                     value = latText,
                     onValueChange = { latText = it },
-                    label = { Text("Latitude") },
+                    label = { Text("Latitude *") },
+                    isError = latText.isNotEmpty() && lat == null,
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 TextField(
                     value = lngText,
                     onValueChange = { lngText = it },
-                    label = { Text("Longitude") },
+                    label = { Text("Longitude *") },
+                    isError = lngText.isNotEmpty() && lng == null,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -670,166 +617,34 @@ private fun ListingFormScreen(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-            Text("Photos (${totalPhotos}/${MAX_PHOTOS})", style = MaterialTheme.typography.titleSmall)
-
-            if (atLimit) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    "Maximum 10 photos reached. Remove one to add more.",
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-
-            // --- Existing photos (edit mode) ---
+            Text("Photos")
             if (existingPhotos.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(6.dp))
-                Text("Saved photos:", style = MaterialTheme.typography.labelMedium)
-                Spacer(modifier = Modifier.height(4.dp))
-                // Row + horizontalScroll avoids LazyRow-in-LazyColumn subcomposition conflicts
+                Text("Saved:")
+                PhotoRow(existingPhotos.map { it.url }, size = 90)
+            }
+            if (pickedPhotos.isNotEmpty()) {
+                Text("To upload:")
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 ) {
-                    existingPhotos.forEach { photo ->
-                        AsyncImage(
-                            model = photo.url,
-                            contentDescription = "Saved photo",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .size(90.dp)
-                                .clip(RoundedCornerShape(8.dp)),
-                        )
-                    }
-                }
-            }
-
-            // --- New device photos ---
-            if (selectedDevicePhotos.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(6.dp))
-                Text("From device:", style = MaterialTheme.typography.labelMedium)
-                Spacer(modifier = Modifier.height(4.dp))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(selectedDevicePhotos.size) { idx ->
-                        val bytes = selectedDevicePhotos[idx]
-                        val bitmap = remember(bytes) {
-                            try {
-                                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
-                            } catch (_: Exception) {
-                                null
-                            }
-                        }
-                        Box(modifier = Modifier.size(90.dp)) {
-                            if (bitmap != null) {
-                                Image(
-                                    bitmap = bitmap,
-                                    contentDescription = "Device photo ${idx + 1}",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(8.dp)),
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text("Photo", style = MaterialTheme.typography.labelSmall)
-                                }
-                            }
-                            TextButton(
-                                onClick = {
-                                    selectedDevicePhotos = selectedDevicePhotos.toMutableList().also { it.removeAt(idx) }
-                                },
-                                modifier = Modifier.align(Alignment.TopEnd),
-                            ) { Text("✕", style = MaterialTheme.typography.labelSmall) }
-                        }
-                    }
-                }
-            }
-
-            // --- URL photos ---
-            if (photoUrls.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(6.dp))
-                Text("From links:", style = MaterialTheme.typography.labelMedium)
-                Spacer(modifier = Modifier.height(4.dp))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(photoUrls.size) { idx ->
-                        Box(modifier = Modifier.size(90.dp)) {
-                            SubcomposeAsyncImage(
-                                model = photoUrls[idx],
-                                contentDescription = "URL photo ${idx + 1}",
+                    pickedPhotos.forEach { uri ->
+                        Column {
+                            AsyncImage(
+                                model = uri,
+                                contentDescription = "Picked photo",
                                 contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(RoundedCornerShape(8.dp)),
-                                loading = {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                                    }
-                                },
-                                error = {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(8.dp)),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Text("Link Error", style = MaterialTheme.typography.labelSmall)
-                                    }
-                                },
+                                modifier = Modifier.size(90.dp),
                             )
-                            TextButton(
-                                onClick = { photoUrls = photoUrls.toMutableList().also { it.removeAt(idx) } },
-                                modifier = Modifier.align(Alignment.TopEnd),
-                            ) { Text("✕", style = MaterialTheme.typography.labelSmall) }
+                            TextButton(onClick = { pickedPhotos = pickedPhotos - uri }, enabled = !busy) {
+                                Text("Remove")
+                            }
                         }
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.height(4.dp))
-            Row(modifier = Modifier.fillMaxWidth()) {
-                Button(
-                    onClick = { photoPickerLauncher.launch("image/*") },
-                    enabled = !busy && !atLimit,
-                ) {
-                    Text("Pick from storage")
-                }
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                TextField(
-                    value = photoUrlInput,
-                    onValueChange = { photoUrlInput = it },
-                    label = { Text("Or paste image URL") },
-                    modifier = Modifier.weight(1f),
-                )
-                Button(
-                    onClick = {
-                        val trimmed = photoUrlInput.trim()
-                        if (trimmed.isNotBlank() && (trimmed.startsWith("http://") || trimmed.startsWith("https://"))) {
-                            photoUrls = photoUrls + trimmed
-                            photoUrlInput = ""
-                        }
-                    },
-                    enabled = !busy && photoUrlInput.isNotBlank() && !atLimit,
-                ) {
-                    Text("Add URL")
-                }
+            Button(onClick = { photoPickerLauncher.launch("image/*") }, enabled = !busy) {
+                Text("Pick photos")
             }
 
             if (busy) {
@@ -838,27 +653,35 @@ private fun ListingFormScreen(
                 Text("Saving listing to server...")
             }
 
-            errorMessage?.let {
+            (photoError ?: errorMessage)?.let {
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("Error: $it", color = androidx.compose.material3.MaterialTheme.colorScheme.error)
+                Text("Error: $it")
             }
 
             Spacer(modifier = Modifier.height(16.dp))
             Row(modifier = Modifier.fillMaxWidth()) {
                 Button(
                     onClick = {
-                        val rent = rentText.toDoubleOrNull() ?: 0.0
-                        val lat = latText.toDoubleOrNull() ?: 0.0
-                        val lng = lngText.toDoubleOrNull() ?: 0.0
+                        photoError = null
+                        val photoBytes = pickedPhotos.map { uri ->
+                            runCatching {
+                                context.contentResolver.openInputStream(uri.toUri())?.use { it.readBytes() }
+                            }.getOrNull()
+                        }
+                        val unreadable = photoBytes.indexOfFirst { it == null }
+                        if (unreadable >= 0) {
+                            photoError = "Photo ${unreadable + 1} could not be read. Remove it and pick it again."
+                            return@Button
+                        }
                         val listing = Listing(
                             listingId = initialListing?.listingId,
                             landlordId = initialListing?.landlordId.orEmpty(),
                             title = title.trim(),
                             description = description.trim().ifEmpty { null },
                             address = address.trim(),
-                            lat = lat,
-                            lng = lng,
-                            rent = rent,
+                            lat = requireNotNull(lat),
+                            lng = requireNotNull(lng),
+                            rent = requireNotNull(rent),
                             deposit = depositText.toDoubleOrNull(),
                             maintenance = maintenanceText.toDoubleOrNull(),
                             availableFrom = availableFrom.trim().ifEmpty { null },
@@ -872,14 +695,17 @@ private fun ListingFormScreen(
                             furnishing = furnishing,
                             parkingTwoWheeler = parkingTwoWheelerText.toIntOrNull() ?: 0,
                             parkingFourWheeler = parkingFourWheelerText.toIntOrNull() ?: 0,
-                            amenities = selectedAmenities.toList(),
-                            rules = selectedRules.toList(),
+                            amenities = selectedAmenities,
+                            rules = selectedRules,
                             preferredTenant = preferredTenant,
                             status = initialListing?.status ?: ListingStatus.ACTIVE,
                         )
-                        onSave(listing, selectedDevicePhotos, photoUrls)
+                        // Uploaded photos are cleared so a later save doesn't upload them twice.
+                        pickedPhotos = emptyList()
+                        onSave(listing, photoBytes.filterNotNull())
                     },
-                    enabled = !busy && title.isNotBlank() && address.isNotBlank() && (rentText.toDoubleOrNull() ?: 0.0) > 0,
+                    enabled = !busy && title.isNotBlank() && address.isNotBlank() &&
+                        lat != null && lng != null && rent != null,
                 ) {
                     Text(if (isEdit) "Update" else "Save Listing")
                 }
@@ -888,6 +714,23 @@ private fun ListingFormScreen(
                     Text("Cancel")
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PhotoRow(urls: List<String>, size: Int) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+    ) {
+        urls.forEach { url ->
+            AsyncImage(
+                model = url,
+                contentDescription = "Property photo",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(size.dp),
+            )
         }
     }
 }

@@ -72,6 +72,7 @@ dependencies {
     implementation(libs.coil.network.okhttp)
     implementation(libs.play.services.location)
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)

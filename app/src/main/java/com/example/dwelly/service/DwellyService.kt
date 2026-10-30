@@ -42,7 +42,7 @@ class DwellyService(
     val currentUser: StateFlow<User?> = _currentUser.asStateFlow()
 
     private val forumService = ForumService(forumApi) { _currentUser.value }
-    private val listingService = ListingService(listingApi, forumService) { _currentUser.value }
+    private val listingService = ListingService(listingApi) { _currentUser.value }
     private val discoveryService = DiscoveryService(listingService) { _currentUser.value }
     private val agreementService = AgreementService { _currentUser.value }
 
@@ -115,12 +115,8 @@ class DwellyService(
 
     // Listings (Person B) ----------------------------------------------------
 
-    suspend fun createListing(
-        listing: Listing,
-        photos: List<ByteArray> = emptyList(),
-        photoUrls: List<String> = emptyList(),
-    ): Result<Listing> =
-        listingService.create(listing, photos, photoUrls)
+    suspend fun createListing(listing: Listing, photos: List<ByteArray> = emptyList()): Result<Listing> =
+        listingService.create(listing, photos)
 
     suspend fun updateListing(listing: Listing): Result<Listing> = listingService.update(listing)
 
@@ -132,9 +128,6 @@ class DwellyService(
 
     suspend fun uploadPhoto(listingId: String, bytes: ByteArray, position: Int): Result<ListingPhoto> =
         listingService.uploadPhoto(listingId, bytes, position)
-
-    suspend fun addPhotoUrl(listingId: String, url: String, position: Int): Result<ListingPhoto> =
-        listingService.addPhotoUrl(listingId, url, position)
 
     suspend fun getMyListings(): Result<List<ListingOverview>> = listingService.getMyListings()
 

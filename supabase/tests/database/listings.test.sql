@@ -2,7 +2,7 @@
 -- Run with: npx supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(29);
+select plan(34);
 
 -- Fixtures (run as postgres) ------------------------------------------------
 insert into auth.users (id, email, raw_user_meta_data) values
@@ -42,7 +42,7 @@ select is(
 );
 
 select is(
-    (select views::int from public.listing_stats where listing_id = (select listing_id from public.listings limit 1)),
+    (select views::int from public.listing_stats where listing_id = (select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001')),
     0,
     'listing_stats starts at 0 views'
 );
@@ -61,9 +61,29 @@ select throws_ok(
     'landlord cannot insert listings table directly'
 );
 
+-- Photos: only the owner's own uploads, never an external URL, never edited or removed
+select lives_ok(
+    $$insert into public.listing_photos (listing_id, url, position)
+      values ((select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001'), 'https://ref.supabase.co/storage/v1/object/public/listing-photos/11111111-0000-0000-0000-000000000001/' || (select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001')::text || '/0.jpg', 0)$$,
+    'landlord adds a photo uploaded to their own folder'
+);
+
+select throws_ok(
+    $$insert into public.listing_photos (listing_id, url, position)
+      values ((select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001'), 'https://picsum.photos/seed/x/800/600', 1)$$,
+    '42501', null,
+    'landlord cannot add an external image URL as a photo'
+);
+
+select throws_ok(
+    $$update public.listing_photos set url = 'https://picsum.photos/seed/x/800/600'$$,
+    '42501', null,
+    'landlord cannot edit photo rows directly'
+);
+
 -- Landlord cannot record stats (only tenants can)
 select throws_ok(
-    $$select public.record_stat((select listing_id from public.listings limit 1), 'VIEW'::public.stat_metric)$$,
+    $$select public.record_stat((select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001'), 'VIEW'::public.stat_metric)$$,
     'P0001', 'accessDenied',
     'landlord cannot call record_stat'
 );
@@ -93,7 +113,8 @@ select throws_ok(
 set local request.jwt.claims = '{"sub": "22222222-0000-0000-0000-000000000001", "role": "authenticated"}';
 
 select is(
-    (select count(*)::int from public.listings where status = 'ACTIVE'),
+    (select count(*)::int from public.listings
+     where status = 'ACTIVE' and landlord_id = '11111111-0000-0000-0000-000000000001'),
     1,
     'tenant can read active listings'
 );
@@ -119,17 +140,17 @@ select is(
 
 -- Stats recording -----------------------------------------------------------
 select lives_ok(
-    $$select public.record_stat((select listing_id from public.listings limit 1), 'VIEW'::public.stat_metric)$$,
+    $$select public.record_stat((select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001'), 'VIEW'::public.stat_metric)$$,
     'tenant records a view'
 );
 
 select lives_ok(
-    $$select public.record_stat((select listing_id from public.listings limit 1), 'SAVE'::public.stat_metric, null, true)$$,
+    $$select public.record_stat((select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001'), 'SAVE'::public.stat_metric, null, true)$$,
     'tenant records a save'
 );
 
 select lives_ok(
-    $$select public.record_stat((select listing_id from public.listings limit 1), 'ENQUIRY'::public.stat_metric, 'Is it available?')$$,
+    $$select public.record_stat((select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001'), 'ENQUIRY'::public.stat_metric, 'Is it available?')$$,
     'tenant sends an enquiry'
 );
 
@@ -137,19 +158,19 @@ select lives_ok(
 set local request.jwt.claims = '{"sub": "11111111-0000-0000-0000-000000000001", "role": "authenticated"}';
 
 select is(
-    (select views::int from public.listing_stats limit 1),
+    (select views::int from public.listing_stats where listing_id = (select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001')),
     1,
     'stats recorded 1 view'
 );
 
 select is(
-    (select saves::int from public.listing_stats limit 1),
+    (select saves::int from public.listing_stats where listing_id = (select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001')),
     1,
     'stats recorded 1 save'
 );
 
 select is(
-    (select enquiries::int from public.listing_stats limit 1),
+    (select enquiries::int from public.listing_stats where listing_id = (select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001')),
     1,
     'stats recorded 1 enquiry'
 );
@@ -157,50 +178,73 @@ select is(
 -- State machine transitions (LOGIC §2) --------------------------------------
 -- ACTIVE -> PAUSED
 select lives_ok(
-    $$select public.change_listing_status((select listing_id from public.listings limit 1), 'PAUSED')$$,
+    $$select public.change_listing_status((select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001'), 'PAUSED')$$,
     'landlord pauses active listing'
 );
 
 -- Disallowed transition: same status PAUSED -> PAUSED
 select throws_ok(
-    $$select public.change_listing_status((select listing_id from public.listings limit 1), 'PAUSED')$$,
+    $$select public.change_listing_status((select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001'), 'PAUSED')$$,
     'P0001', 'rejectChange: cannot transition from PAUSED to PAUSED',
     'cannot change to same status'
 );
 
 -- PAUSED -> ACTIVE (resume)
 select lives_ok(
-    $$select public.change_listing_status((select listing_id from public.listings limit 1), 'ACTIVE')$$,
+    $$select public.change_listing_status((select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001'), 'ACTIVE')$$,
     'landlord resumes paused listing'
 );
 
 -- ACTIVE -> RENTED
 select lives_ok(
-    $$select public.change_listing_status((select listing_id from public.listings limit 1), 'RENTED')$$,
+    $$select public.change_listing_status((select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001'), 'RENTED')$$,
     'landlord marks listing rented'
 );
 
 -- Disallowed transition: RENTED -> ACTIVE
 select throws_ok(
-    $$select public.change_listing_status((select listing_id from public.listings limit 1), 'ACTIVE')$$,
+    $$select public.change_listing_status((select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001'), 'ACTIVE')$$,
     'P0001', 'rejectChange: cannot transition from RENTED to ACTIVE',
     'cannot resume a rented listing directly'
 );
 
 -- RENTED -> DELETED (soft delete)
 select lives_ok(
-    $$select public.change_listing_status((select listing_id from public.listings limit 1), 'DELETED')$$,
+    $$select public.change_listing_status((select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001'), 'DELETED')$$,
     'landlord deletes rented listing'
 );
 
 -- DELETED cannot be edited
 select throws_ok(
     $$select public.update_listing(
-        (select listing_id from public.listings limit 1),
+        (select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001'),
         'New Title', '123 MG Road', 12.9716, 77.5946, 30000, 'APARTMENT'::public.property_type
     )$$,
     'P0001', 'rejectChange: listing is DELETED',
     'deleted listing cannot be edited'
+);
+
+-- DELETED listing takes no new photos
+select throws_ok(
+    $$insert into public.listing_photos (listing_id, url, position)
+      values ((select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001'), 'https://ref.supabase.co/storage/v1/object/public/listing-photos/11111111-0000-0000-0000-000000000001/' || (select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001')::text || '/1.jpg', 1)$$,
+    '42501', null,
+    'deleted listing cannot get new photos'
+);
+
+-- Landlord 2 cannot add photos to landlord 1's listing (run as postgres to look up the id)
+reset role;
+select set_config('test.l1', (select listing_id from public.listings where landlord_id = '11111111-0000-0000-0000-000000000001')::text, true);
+set local role authenticated;
+set local request.jwt.claims = '{"sub": "11111111-0000-0000-0000-000000000002", "role": "authenticated"}';
+
+select throws_ok(
+    $$insert into public.listing_photos (listing_id, url, position)
+      values (current_setting('test.l1')::uuid,
+              'https://ref.supabase.co/storage/v1/object/public/listing-photos/11111111-0000-0000-0000-000000000002/'
+              || current_setting('test.l1') || '/5.jpg', 5)$$,
+    '42501', null,
+    'landlord 2 cannot add photos to landlord 1 listing'
 );
 
 reset role;

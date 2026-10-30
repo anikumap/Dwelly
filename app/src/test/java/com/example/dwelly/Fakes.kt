@@ -83,6 +83,7 @@ class FakeListingApi : ListingApi {
     val photos = mutableMapOf<String, MutableList<ListingPhoto>>()
     val stats = mutableMapOf<String, ListingStats>()
     val calls = mutableListOf<String>()
+    var failPhotoUpload = false
 
     override suspend fun createListing(listing: Listing): Listing {
         calls += "createListing:${listing.title}"
@@ -136,20 +137,9 @@ class FakeListingApi : ListingApi {
         position: Int,
     ): ListingPhoto {
         calls += "uploadPhoto:$listingId:$position"
+        if (failPhotoUpload) throw IllegalStateException("storage offline")
         val list = photos.getOrPut(listingId) { mutableListOf() }
         val photo = ListingPhoto("photo-${list.size + 1}", listingId, "https://example.com/photos/$position.jpg", position)
-        list.add(photo)
-        return photo
-    }
-
-    override suspend fun addPhotoUrl(
-        listingId: String,
-        url: String,
-        position: Int,
-    ): ListingPhoto {
-        calls += "addPhotoUrl:$listingId:$url:$position"
-        val list = photos.getOrPut(listingId) { mutableListOf() }
-        val photo = ListingPhoto("photo-${list.size + 1}", listingId, url, position)
         list.add(photo)
         return photo
     }

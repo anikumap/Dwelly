@@ -1,80 +1,62 @@
 # Dwelly Project Log
 
 Last Updated: 2026-10-30
-Current Scope: Person B (Landlord & Listings) Implementation & Review Fixes
+Current Scope: Person B (Landlord & Listings), PR #1 review fixes
 
 ---
 
 ## 1. Overview & Current Status
 
-Dwelly is a rental management Android (Jetpack Compose) platform using Supabase (Postgres + Auth + Storage).
-Person A (Platform, Auth, Forum) was completed previously.
-Person B (Landlord & Listings, Process 2.0) has resolved all review blockers and fully implemented photo upload, preview, and dashboard display.
+Dwelly is a rental management Android (Jetpack Compose) app backed by Supabase (Postgres + Auth + Storage).
+Person A (Platform, Auth, Forum) is done. Person B (Landlord & Listings, Process 2.0) is in review on PR #1.
+
+Verified on the PR branch: `./gradlew :app:assembleDebug`, `:app:testDebugUnitTest` (36 tests) and `:app:lintDebug` pass.
+Not yet verified: `npx supabase test db` (pgTAP), which needs Docker.
 
 ---
 
-## 2. Review Resolution & Fixes Applied
+## 2. Review Fixes
 
-### Blockers Resolved
+### Database (`supabase/migrations/0004_listings.sql`)
 
-1. **Direct table mutation bypass on `listings`**:
-   - `supabase/migrations/0004_listings.sql`: Revoked direct `INSERT` and `UPDATE` grants for authenticated users on `public.listings`.
-   - Removed `listings_insert` and `listings_update` RLS policies. The `listings` table is now strictly read-only for clients (`SELECT` only).
-   - All mutations must pass through `create_listing`, `update_listing`, and `change_listing_status` RPCs (security definer).
+- `listings` is read-only for clients (`select` only, no insert or update policies). Every write goes through the
+  `create_listing`, `update_listing` and `change_listing_status` security definer RPCs.
+- `change_listing_status` follows the LOGIC §2 table exactly. A same-status request (PAUSED → PAUSED) is `rejectChange`.
+  It and `update_listing` lock the row (`for update`) so two concurrent requests can't both pass the state check.
+- The forum thread is created inside `create_listing` (`perform create_thread`), in the same transaction (plan.md).
+  The Kotlin service doesn't call `ForumService.createThread` a second time.
+- `record_stat` is TENANT only.
+- `listing_photos`: clients can only `select` and `insert`. An insert must be by the listing's owner, while the listing
+  isn't DELETED, and its `url` must point into the owner's own folder in the `listing-photos` bucket. So no stock or
+  external image URLs, and no photos added to a deleted listing.
+- The duplicate `0004_listings_safe_rerun.sql` is gone.
 
-2. **Duplicate migration number**:
-   - Deleted the temporary repair script `supabase/migrations/0004_listings_safe_rerun.sql`. Only canonical migrations remain (`0001` through `0004`).
+### Tests (`supabase/tests/database/listings.test.sql`)
 
-3. **Dashboard UI freeze on status changes**:
-   - In `LandlordScreens.kt`, `LandlordViewModel` previously called `load()` within `updateStatus` while `busy` was already true. Because `load()` returned immediately when `busy == true`, `busy` was never reset to `false`, freezing all UI actions.
-   - Refactored `updateStatus`, `createListing`, and `updateListing` to reload data via an internal `reloadListingsInternal()` helper that executes within the existing coroutine and guarantees `busy = false` in a `finally` block.
+- `plan(34)` matches the 34 assertions. The file ends with `finish(); rollback;`.
+- Every query targets landlord 1's own listing by `landlord_id` rather than `limit 1`, so seed data can't change the result.
+- New cases: direct listing insert and update refused, landlord can't `record_stat`, own-bucket photo accepted, external
+  photo URL refused, photo row update refused, photos refused on a DELETED listing and on another landlord's listing.
 
-4. **Real Photo Selection, Preview & Display**:
-   - Replaced "Add dummy photo" button with a full photo management system:
-     - **Device Storage Picker**: Android's `GetMultipleContents()` activity launcher. Picks multiple images from gallery/file manager. Respects the 10-photo limit (only takes as many as the remaining slots allow).
-     - **Image URL Support**: Text input to paste valid image links (`http://`/`https://`). Validated before adding.
-     - **Live Thumbnail Previews**: `AsyncImage` (Coil 3) thumbnails displayed in a horizontal scroll row as soon as photos are added — from device URIs and pasted URLs alike.
-     - **Max 10 photos enforced**: Both picker and URL buttons are disabled once the limit is reached. An error-styled warning message appears at the limit.
-     - **Remove button (✕)** on each new thumbnail to remove photos before saving.
-     - **Edit mode**: Existing saved photos are shown in a read-only row above the add controls, so the landlord can see what's already uploaded.
-     - **Dashboard card photo strip**: `ListingOverview` now includes `photos: List<ListingPhoto>`. `ListingOverviewCard` renders a horizontal `LazyRow` of thumbnails at the top of the card for any listing that has photos.
-   - Removed the random Picsum fallback from `ListingApi.kt`.
-   - `ListingService.create` no longer silently swallows photo upload errors.
-   - Restored explicit `forumService.createThread(listingId)` call per LOGIC §4.1 message 5.
+### App
 
-5. **pgTAP database test file syntax & isolation**:
-   - `supabase/tests/database/listings.test.sql`: Updated assertion plan count from `plan(24)` to `plan(29)`.
-   - Added tests ensuring landlords cannot insert or update the `listings` table directly via PostgREST.
-   - Added tests ensuring landlords cannot call `record_stat`.
-   - Replaced trailing `commit;` with `select * from finish(); rollback;` so tests clean up after themselves.
-
----
-
-### Should Fix & Minor Issues Resolved
-
-1. **`record_stat` caller validation**:
-   - Updated `public.record_stat` RPC to require `public.current_user_role() = 'TENANT'`.
-2. **Disallowed same-status transitions**:
-   - `PAUSED→PAUSED` or `DELETED→DELETED` now raise `rejectChange` per LOGIC §2.
-3. **Forum thread creation alignment**:
-   - `ListingService.create()` explicitly calls `forumService.createThread(listingId)` per LOGIC §4.1.
-4. **Service layer dependency cleanliness**:
-   - `listingApi` is now a mandatory parameter in `DwellyService` (no default `SupabaseListingApi()`).
-   - `DwellyServiceTest.kt` updated to pass `FakeListingApi()`.
+- Photos come from the system picker (`GetMultipleContents`). There's no dummy button, no Picsum fallback and no
+  paste-a-URL option. Photos can be added on create and on edit.
+- Upload failures are reported, never swallowed. If a photo fails during create, the listing is already saved, so the
+  form switches to editing that listing instead of letting a retry create a second one.
+- `LandlordViewModel` runs one request at a time through `runBusy`, which always clears `busy`. Status changes, create
+  and edit all reload the list. Covered by `LandlordViewModelTest`.
+- The form keeps amenities, rules and picked photos across rotation. Latitude, longitude and rent have no defaults and
+  must be valid before Save is enabled.
+- `getCompleteness` is limited to the owning landlord.
+- Plain default Compose, with no custom shapes or colours.
 
 ---
 
-## 3. Verification & Test Status
+## 3. Next Steps
 
-- **Unit Tests**: `./gradlew :app:testDebugUnitTest` → **BUILD SUCCESSFUL (All unit tests pass)**
-- **Android Compilation**: `./gradlew :app:assembleDebug` → **BUILD SUCCESSFUL**
-- **Git State**: Clean branch, no duplicate migration files.
-
----
-
-## 4. Next Steps for Person B
-
-- **Apply Updated 0004 Migration**: Run the updated `0004_listings.sql` in the Supabase SQL editor and execute `NOTIFY pgrst, 'reload schema';`
-- **Check with Person C**: `CREATE_AGREEMENT` route is registered in `DwellyNavHost` — confirm with Person C that they own the destination composable.
-- **Git commit author**: `git config user.email <github-email>` to link commits to your GitHub profile.
-
+- **Re-apply 0004** on the linked Supabase project. It was applied by hand earlier, so `db push` won't re-run it:
+  run the file in the SQL editor, then `NOTIFY pgrst, 'reload schema';`.
+- **Run pgTAP** with Docker: `npx supabase start`, then `npx supabase test db`.
+- **Check with Person C**: the `CREATE_AGREEMENT` route is registered in `DwellyNavHost`. Confirm that they own the
+  destination composable.

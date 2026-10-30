@@ -19,15 +19,13 @@ import com.example.dwelly.model.User
  */
 class ListingService(
     private val listingApi: ListingApi,
-    private val forumService: ForumService,
     private val currentUser: () -> User?,
 ) {
-    /** LOGIC §4.1. Forum thread is created in the create_listing transaction. */
-    suspend fun create(
-        listing: Listing,
-        photos: List<ByteArray> = emptyList(),
-        photoUrls: List<String> = emptyList(),
-    ): Result<Listing> {
+    /**
+     * LOGIC §4.1. The forum thread (message 5) is created by create_listing calling
+     * create_thread in the same transaction (plan.md), so there is no separate Kotlin call.
+     */
+    suspend fun create(listing: Listing, photos: List<ByteArray> = emptyList()): Result<Listing> {
         val user = currentUser() ?: return Result.failure(DwellyError.AccessDenied())
         if (user.role != Role.LANDLORD) {
             return Result.failure(DwellyError.AccessDenied("Only landlords can create listings"))
@@ -36,17 +34,8 @@ class ListingService(
         return serverCall {
             val created = listingApi.createListing(listing.copy(landlordId = user.userId))
             val listingId = requireNotNull(created.listingId) { "Listing created without id" }
-            forumService.createThread(listingId)
-            var currentPos = 0
-            if (photos.isNotEmpty()) {
-                photos.forEach { bytes ->
-                    listingApi.uploadPhoto(listingId, user.userId, bytes, currentPos++)
-                }
-            }
-            if (photoUrls.isNotEmpty()) {
-                photoUrls.forEach { url ->
-                    listingApi.addPhotoUrl(listingId, url, currentPos++)
-                }
+            photos.forEachIndexed { index, bytes ->
+                listingApi.uploadPhoto(listingId, user.userId, bytes, index)
             }
             created
         }
@@ -86,16 +75,6 @@ class ListingService(
         }
     }
 
-    suspend fun addPhotoUrl(listingId: String, url: String, position: Int): Result<ListingPhoto> {
-        val user = currentUser() ?: return Result.failure(DwellyError.AccessDenied())
-        if (user.role != Role.LANDLORD) {
-            return Result.failure(DwellyError.AccessDenied())
-        }
-        return serverCall {
-            listingApi.addPhotoUrl(listingId, url, position)
-        }
-    }
-
     suspend fun getMyListings(): Result<List<ListingOverview>> {
         val user = currentUser() ?: return Result.failure(DwellyError.AccessDenied())
         if (user.role != Role.LANDLORD) {
@@ -113,10 +92,17 @@ class ListingService(
         }
     }
 
-    suspend fun getCompleteness(listingId: String): Result<Completeness> = serverCall {
-        val listing = listingApi.getListing(listingId) ?: throw DwellyError.ListingUnavailable()
-        val photos = listingApi.getPhotos(listingId)
-        score(listing, photos.size)
+    /** Landlord only, own listing only (ARCHITECTURE §8 rule 1). */
+    suspend fun getCompleteness(listingId: String): Result<Completeness> {
+        val user = currentUser() ?: return Result.failure(DwellyError.AccessDenied())
+        if (user.role != Role.LANDLORD) {
+            return Result.failure(DwellyError.AccessDenied())
+        }
+        return serverCall {
+            val listing = listingApi.getListing(listingId)
+            if (listing == null || listing.landlordId != user.userId) throw DwellyError.AccessDenied()
+            score(listing, listingApi.getPhotos(listingId).size)
+        }
     }
 
     /** LOGIC §5. Completeness = filled items / total items x 100. */
@@ -138,7 +124,7 @@ class ListingService(
             suggestions.add("Add at least one photo of the property")
         }
 
-        // 3. Property details: bedrooms, bathrooms, carpetArea, floorNo, furnishing
+        // 3. Property details: bedrooms, bathrooms, carpetArea, furnishing
         val hasDetails = listing.bedrooms != null && listing.bathrooms != null &&
             listing.carpetArea != null && listing.furnishing != null
         if (hasDetails) {
