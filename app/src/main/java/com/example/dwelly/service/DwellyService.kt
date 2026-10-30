@@ -2,6 +2,7 @@ package com.example.dwelly.service
 
 import com.example.dwelly.data.AuthApi
 import com.example.dwelly.data.ForumApi
+import com.example.dwelly.data.ListingApi
 import com.example.dwelly.data.serverCall
 import com.example.dwelly.model.Agreement
 import com.example.dwelly.model.Completeness
@@ -33,6 +34,7 @@ import kotlinx.coroutines.flow.asStateFlow
 class DwellyService(
     private val authApi: AuthApi,
     forumApi: ForumApi,
+    listingApi: ListingApi,
 ) {
     private val _currentUser = MutableStateFlow<User?>(null)
 
@@ -40,7 +42,7 @@ class DwellyService(
     val currentUser: StateFlow<User?> = _currentUser.asStateFlow()
 
     private val forumService = ForumService(forumApi) { _currentUser.value }
-    private val listingService = ListingService(forumService) { _currentUser.value }
+    private val listingService = ListingService(listingApi) { _currentUser.value }
     private val discoveryService = DiscoveryService(listingService) { _currentUser.value }
     private val agreementService = AgreementService { _currentUser.value }
 
@@ -113,7 +115,7 @@ class DwellyService(
 
     // Listings (Person B) ----------------------------------------------------
 
-    suspend fun createListing(listing: Listing, photos: List<ByteArray>): Result<Listing> =
+    suspend fun createListing(listing: Listing, photos: List<ByteArray> = emptyList()): Result<Listing> =
         listingService.create(listing, photos)
 
     suspend fun updateListing(listing: Listing): Result<Listing> = listingService.update(listing)
