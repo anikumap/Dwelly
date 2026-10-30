@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
@@ -332,6 +333,8 @@ private fun ListingOverviewCard(
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
+            // Status actions on one row, Edit and Delete on the next, so four buttons never
+            // have to share a phone-width row.
             Row(modifier = Modifier.fillMaxWidth()) {
                 when (listing.status) {
                     ListingStatus.ACTIVE -> {
@@ -351,12 +354,32 @@ private fun ListingOverviewCard(
                         // Soft deleted: no actions
                     }
                 }
+            }
 
-                Spacer(modifier = Modifier.width(4.dp))
-                if (listing.status != ListingStatus.DELETED) {
+            if (listing.status != ListingStatus.DELETED) {
+                var confirmDelete by remember { mutableStateOf(false) }
+                Row(modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton(onClick = onEdit, enabled = enabled) { Text("Edit") }
                     Spacer(modifier = Modifier.width(4.dp))
-                    TextButton(onClick = onDelete, enabled = enabled) { Text("Delete") }
+                    TextButton(onClick = { confirmDelete = true }, enabled = enabled) { Text("Delete") }
+                }
+
+                // Delete can't be undone (DELETED has no way back in LOGIC §2), so ask first.
+                if (confirmDelete) {
+                    AlertDialog(
+                        onDismissRequest = { confirmDelete = false },
+                        title = { Text("Delete listing?") },
+                        text = { Text("\"${listing.title}\" will be removed for good. This can't be undone.") },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                confirmDelete = false
+                                onDelete()
+                            }) { Text("Delete") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
+                        },
+                    )
                 }
             }
         }
