@@ -166,7 +166,7 @@ class DwellyService(
 
     suspend fun getAgreement(listingId: String): Result<Agreement?> = agreementService.get(listingId)
 
-    suspend fun getMyAgreement(): Result<Agreement?> = agreementService.getMyAgreement()
+    suspend fun getMyAgreements(): Result<List<Agreement>> = agreementService.getMyAgreements()
 
     suspend fun getTenantIdByEmail(email: String): Result<String> = agreementService.getTenantIdByEmail(email)
 }

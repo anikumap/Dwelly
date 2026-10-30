@@ -57,9 +57,24 @@ class AgreementServiceTest {
     }
 
     @Test
+    fun tenantSeesEveryAgreementWithTheOneToSignFirst() = runBlocking {
+        val old = agreementService.draft("old", tenant.userId).getOrThrow()
+        agreementService.send(old.agreementId)
+        currentUser = tenant
+        agreementService.sign(old.agreementId)
+        currentUser = landlord
+        val new = agreementService.draft("new", tenant.userId).getOrThrow()
+        agreementService.send(new.agreementId)
+
+        currentUser = tenant
+        val mine = agreementService.getMyAgreements().getOrThrow()
+        assertEquals(listOf("new", "old"), mine.map { it.listingId })
+    }
+
+    @Test
     fun signedOutCallerIsDenied() = runBlocking {
         currentUser = null
         assertTrue(agreementService.sign("ag-l1").exceptionOrNull() is DwellyError.AccessDenied)
-        assertTrue(agreementService.getMyAgreement().exceptionOrNull() is DwellyError.AccessDenied)
+        assertTrue(agreementService.getMyAgreements().exceptionOrNull() is DwellyError.AccessDenied)
     }
 }

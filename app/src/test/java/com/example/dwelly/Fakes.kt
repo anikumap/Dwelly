@@ -139,8 +139,10 @@ class FakeAgreementApi : AgreementApi {
     override suspend fun getAgreementByListing(listingId: String): Agreement? =
         agreements.values.firstOrNull { it.listingId == listingId }
 
-    override suspend fun getTenantAgreement(tenantId: String): Agreement? =
-        agreements.values.firstOrNull { it.tenantId == tenantId && (it.status == AgreementStatus.SENT || it.status == AgreementStatus.SIGNED) }
+    override suspend fun getTenantAgreements(tenantId: String): List<Agreement> =
+        agreements.values
+            .filter { it.tenantId == tenantId && (it.status == AgreementStatus.SENT || it.status == AgreementStatus.SIGNED) }
+            .sortedBy { it.tenantSignedAt != null }
 
     override suspend fun getTenantIdByEmail(email: String): String? =
         if (email == "tenant@test.dev") "t1" else null

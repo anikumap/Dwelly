@@ -51,6 +51,9 @@ import com.example.dwelly.model.ListingStatus
 import com.example.dwelly.model.PreferredTenant
 import com.example.dwelly.model.PropertyType
 import com.example.dwelly.service.DwellyService
+import com.example.dwelly.ui.location.CurrentLocationResult
+import com.example.dwelly.ui.location.problem
+import com.example.dwelly.ui.location.rememberCurrentLocationRequest
 import kotlinx.coroutines.launch
 
 class LandlordViewModel(private val dwelly: DwellyService) : ViewModel() {
@@ -434,6 +437,16 @@ private fun ListingFormScreen(
         pickedPhotos = (pickedPhotos + uris.map { it.toString() }).distinct()
     }
 
+    // Fills latitude and longitude from the device; the landlord can still edit them.
+    var locationProblem by remember { mutableStateOf<String?>(null) }
+    val requestCurrentLocation = rememberCurrentLocationRequest { result ->
+        locationProblem = result.problem()
+        if (result is CurrentLocationResult.Found) {
+            latText = result.lat.toString()
+            lngText = result.lng.toString()
+        }
+    }
+
     val lat = latText.toDoubleOrNull()?.takeIf { it in -90.0..90.0 }
     val lng = lngText.toDoubleOrNull()?.takeIf { it in -180.0..180.0 }
     val rent = rentText.toDoubleOrNull()?.takeIf { it > 0 }
@@ -479,6 +492,8 @@ private fun ListingFormScreen(
                     modifier = Modifier.weight(1f),
                 )
             }
+            TextButton(onClick = requestCurrentLocation, enabled = !busy) { Text("Use my current location") }
+            locationProblem?.let { Text(it) }
 
             Row(modifier = Modifier.fillMaxWidth()) {
                 TextField(
